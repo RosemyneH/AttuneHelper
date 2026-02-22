@@ -82,6 +82,24 @@ AH.itemTypeToUnifiedSlot = {
   INVTYPE_SHIELD="SecondaryHandSlot"
 }
 
+
+--Popups
+function AH.LoadPopUps()
+	StaticPopupDialogs["ATTUNEHELPER_CONFIRM_UPDATE_AHSET"] = {
+		text = AH.t("Are you sure you want to update AHSet to match your currently equipped items?"),
+		button1 = AH.t("Yes"),
+		button2 = AH.t("Cancel"),
+		OnAccept = function()
+			AH.SetAHSetToEquipped()
+		end,
+		timeout = 0,
+		whileDead = true,
+		hideOnEscape = true,
+		preferredIndex = 3
+	}
+end
+AH.LoadPopUps()
+
 -- Export as globals for backward compatibility while we refactor
 _G.MYTHIC_MIN_ITEMID       = AH.MYTHIC_MIN_ITEMID
 _G.FORGE_LEVEL_MAP         = AH.FORGE_LEVEL_MAP

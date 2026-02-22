@@ -143,6 +143,12 @@ function AH.GetQualifyingVendorItems()
                             skipReason = "This variant only " .. thisVariantProgress .. "% attuned"
                         end
                     end
+					
+					-- Check poor or normal quality
+					if not skip and (AttuneHelperDB["Do Not Sell Grey And White Items"] == 1) and  ((q == 1) or (q == 0)) then
+                        skip = true
+                        skipReason = "Item is attunable by other accounts."
+                    end
 
                     -- Final qualification checks
                     if not skip then

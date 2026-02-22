@@ -212,8 +212,7 @@ end
 
 SLASH_AHTOGGLE1 = "/ahtoggle"
 SlashCmdList["AHTOGGLE"] = function()
-    AttuneHelperDB["Auto Equip Attunable After Combat"] = 1 - (AttuneHelperDB["Auto Equip Attunable After Combat"] or 0)
-    print("|cffffd200[AH]|r Auto-Equip After Combat: " .. (AttuneHelperDB["Auto Equip Attunable After Combat"] == 1 and "|cff00ff00Enabled|r." or "|cffff0000Disabled|r."))
+    AH.ToggleAutoEquip()
 end
 
 SLASH_AHSETLIST1 = "/ahsetlist"
@@ -233,27 +232,7 @@ end
 
 SLASH_AHSETALL1 = "/ahsetall"
 SlashCmdList["AHSETALL"] = function()
-    AHSetList = {}
-    print("|cffffd200[AttuneHelper]|r Deleted previous AHSetList Items.")
-    
-    local slotsList = {"HeadSlot","NeckSlot","ShoulderSlot","BackSlot","ChestSlot","WristSlot","HandsSlot","WaistSlot","LegsSlot","FeetSlot","Finger0Slot","Finger1Slot","Trinket0Slot","Trinket1Slot","MainHandSlot","SecondaryHandSlot","RangedSlot"}
-    local slotNumberMapping = {Finger0Slot=11,Finger1Slot=12,Trinket0Slot=13,Trinket1Slot=14,MainHandSlot=16,SecondaryHandSlot=17}
-    
-    for i, slotName in ipairs(slotsList) do
-        local invSlotID = GetInventorySlotInfo(slotName)
-        local equippedItemLink = GetInventoryItemLink("player", invSlotID)
-        
-        if equippedItemLink then
-            local equippedItemName = GetItemInfo(equippedItemLink)
-            if equippedItemName then
-                AHSetList[equippedItemName] = slotName
-                print("|cffffd200[AH]|r '" .. equippedItemName .. "' added to AHSet, designated for slot " .. slotName .. ".")
-            end
-        end
-    end
-    
-    for i=0,4 do AH.UpdateBagCache(i) end
-    AH.UpdateItemCountText()
+    AH.SetAHSetToEquipped()
 end
 
 SLASH_AHIGNORELIST1 = "/ahignorelist"
@@ -308,6 +287,49 @@ SlashCmdList["AHBLL"] = function()
     end
 end
 
+SLASH_AHTOGGLERECYCLE1 = "/ahtogglerecycle"
+SlashCmdList["AHTOGGLERECYCLE"] = function()
+    AttuneHelperDB["Do Not Sell Grey And White Items"] = 1 - (AttuneHelperDB["Do Not Sell Grey And White Items"] or 0)
+    print("|cffffd200[AH]|r Do Not Sell Grey And White Items: " .. (AttuneHelperDB["Do Not Sell Grey And White Items"] == 1 and "|cff00ff00Enabled|r." or "|cffff0000Disabled|r."))
+end
+
+-- ʕ •ᴥ•ʔ✿ Performance monitoring commands ✿ ʕ •ᴥ•ʔ
+SLASH_AHPERF1 = "/ahperf"
+SlashCmdList["AHPERF"] = function()
+    if AH.GetCacheStats then
+        print("|cffffd200[AH]|r " .. AH.GetCacheStats())
+    end
+    if AH.GetMemoryUsage then
+        print("|cffffd200[AH]|r Memory Usage: " .. AH.GetMemoryUsage())
+    end
+    if AH.EnhancedCleanupCaches then
+        print("|cffffd200[AH]|r Enhanced cleanup available")
+    end
+end
+
+SLASH_AHCLEANUP1 = "/ahcleanup"
+SlashCmdList["AHCLEANUP"] = function()
+    if AH.EnhancedCleanupCaches then
+        print("|cffffd200[AH]|r Running enhanced cleanup...")
+        AH.EnhancedCleanupCaches()
+    elseif AH.CleanupCaches then
+        print("|cffffd200[AH]|r Running standard cleanup...")
+        AH.CleanupCaches()
+    else
+        print("|cffffd200[AH]|r No cleanup function available")
+    end
+end
+
+SLASH_AHCACHE1 = "/ahcache"
+SlashCmdList["AHCACHE"] = function()
+    if AH.EnhancedBagCacheCleanup then
+        print("|cffffd200[AH]|r Running bag cache cleanup...")
+        AH.EnhancedBagCacheCleanup()
+    else
+        print("|cffffd200[AH]|r No bag cache cleanup available")
+    end
+end
+
 function AH.SlashCommand(msg)
     if not msg then return end
     
@@ -320,7 +342,6 @@ function AH.SlashCommand(msg)
         print("  |cffffd200/ah toggle|r - Toggle auto-equip after combat")
         print("  |cffffd200/ah togglemini|r - Toggle mini/full mode")
         print("  |cffffd200/ah reset|r - Reset frame positions to center")
-        print("  |cffffd200/ah hidede|r - Toggle disenchant button visibility")
         print("  |cffffd200/ah bag|r - Toggle disenchant target bag (0 or 1)")
         print("  |cffffd200/ah weapons|r - Show weapon control settings")
         print("  |cffffd200/ah blacklist <slot>|r - Toggle slot blacklist")
@@ -338,10 +359,14 @@ function AH.SlashCommand(msg)
     end
     
     if msg == "cleanup" then
-        if AH.CleanupCaches then
+        if AH.EnhancedCleanupCaches then
+            print("|cffffd200[AH]|r Running enhanced cleanup...")
+            AH.EnhancedCleanupCaches()
+        elseif AH.CleanupCaches then
+            print("|cffffd200[AH]|r Running standard cleanup...")
             AH.CleanupCaches()
         else
-            print("|cff00ff00[AttuneHelper]|r Memory cleanup not available")
+            print("|cffffd200[AH]|r No cleanup function available")
         end
         return
     end
@@ -500,19 +525,6 @@ function AH.SlashCommand(msg)
     if msg == "ohhold" then
         AttuneHelperDB["Allow OffHand Holdables"] = 1 - (AttuneHelperDB["Allow OffHand Holdables"] or 0)
         print("|cff00ff00[AttuneHelper]|r OffHand holdables " .. (AttuneHelperDB["Allow OffHand Holdables"] == 1 and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
-        AH.ForceSaveSettings()
-        return
-    end
-
-    -- ʕ •ᴥ•ʔ✿ Toggle disenchant button visibility ✿ ʕ •ᴥ•ʔ
-    if msg == "hidede" or msg == "hidebutton" then
-        AttuneHelperDB["Hide Disenchant Button"] = 1 - (AttuneHelperDB["Hide Disenchant Button"] or 0)
-        local isHidden = AttuneHelperDB["Hide Disenchant Button"] == 1
-        print("|cffffd200[AH]|r Disenchant button " .. (isHidden and "|cffff0000hidden|r" or "|cff00ff00shown|r"))
-        
-        if AH.UpdateDisenchantButtonVisibility then
-            AH.UpdateDisenchantButtonVisibility()
-        end
         AH.ForceSaveSettings()
         return
     end

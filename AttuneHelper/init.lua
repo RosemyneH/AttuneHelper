@@ -43,12 +43,5 @@ AH.currentAttunableItemCount = 0
 AH._addonName = addonName
 AH._addonTable = addonTable
 
--- Flags sub-table (guaranteed to exist before debug.lua runs)
+-- Flags sub-table (guaranteed to exist before debug.lua runs) so users can type AH.flags.X = true in chat
 AH.flags = AH.flags or {}
-
--- Convenience global alias so users can type AH.flags.X = true in chat
-_G.AH = AH
-
--- The remainder of the logic is still in AttuneHelper.lua for now.
--- As we migrate code out, modules should attach their public
--- functions & state to this `AH` table instead of leaking globals. 

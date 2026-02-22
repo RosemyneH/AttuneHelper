@@ -85,18 +85,28 @@ if AH then
             _G.AttuneHelperMiniFrame = AH.UI.miniFrame
             
             if AH.UI.buttons then
-                _G.EquipAllButton = AH.UI.buttons.equipAll
-                _G.SortInventoryButton = AH.UI.buttons.sort
-                _G.VendorAttunedButton = AH.UI.buttons.vendor
-                _G.AttuneHelperEquipAllButton = AH.UI.buttons.equipAll
-                _G.AttuneHelperSortInventoryButton = AH.UI.buttons.sort
-                _G.AttuneHelperVendorAttunedButton = AH.UI.buttons.vendor
+				_G.EquipAllButton =  AH.UI.buttons.equipAll
+				_G.AHSetUpdateButton = AH.UI.buttons.AHSetUpdate
+				_G.VendorAttunedButton = AH.UI.buttons.vendor
+				_G.ToggleAutoEquipButton = AH.UI.buttons.toggleAutoEquip
+				_G.SettingsButton = AH.UI.buttons.openSettings
+				_G.SortInventoryButton = AH.UI.buttons.sort
+				_G.AttuneHelperEquipAllButton =  AH.UI.buttons.equipAll
+				_G.AttuneHelperAHSetUpdateButton = AH.UI.buttons.AHSetUpdate
+				_G.AttuneHelperVendorAttunedButton = AH.UI.buttons.vendor
+				_G.AttuneHelperToggleAutoEquipButton = AH.UI.buttons.toggleAutoEquip
+				_G.AttuneHelperSettingsButton = AH.UI.buttons.openSettings
+				_G.AttuneHelperSortInventoryButton = AH.UI.buttons.sort
             end
             
             if AH.UI.miniButtons then
-                _G.AttuneHelperMiniEquipButton = AH.UI.miniButtons.equip
-                _G.AttuneHelperMiniSortButton = AH.UI.miniButtons.sort
+                _G.AttuneHelperMiniEquipButton = AH.UI.miniButtons.equipAll
+				_G.AttuneHelperMiniAHSetUpdateButton = AH.UI.miniButtons.AHSetUpdate
                 _G.AttuneHelperMiniVendorButton = AH.UI.miniButtons.vendor
+				
+				_G.AttuneHelperMiniToggleAutoEquipButton = AH.UI.miniButtons.toggleAutoEquip
+				_G.AttuneHelperMiniSettingsButton = AH.UI.miniButtons.openSettings
+                _G.AttuneHelperMiniSortButton = AH.UI.miniButtons.sort
             end
             
             if AH.UI.itemCountText then
@@ -141,18 +151,4 @@ if AH then
             AH.SlashCommand(msg)
         end
     end
-
-    -- ʕ •ᴥ•ʔ✿ Periodic memory cleanup to prevent excessive buildup ✿ ʕ •ᴥ•ʔ
-    local function SchedulePeriodicCleanup()
-        AH.Wait(300, function() -- Every 5 minutes
-            if AH.CleanupCaches then
-                AH.print_debug_general("Automatic periodic cleanup triggered")
-                AH.CleanupCaches()
-            end
-            SchedulePeriodicCleanup() -- Reschedule
-        end)
-    end
-
-    -- Start periodic cleanup after 60 seconds
-    AH.Wait(60, SchedulePeriodicCleanup)
 end 

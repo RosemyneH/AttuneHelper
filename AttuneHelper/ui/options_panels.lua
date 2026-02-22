@@ -28,6 +28,7 @@ AH.general_options_list_for_checkboxes = {
     {text = "Sell Attuned Mythic Gear?", dbKey = "Sell Attuned Mythic Gear?"},
     {text = "Auto Equip Attunable After Combat", dbKey = "Auto Equip Attunable After Combat"},
     {text = "Do Not Sell BoE Items", dbKey = "Do Not Sell BoE Items"},
+	{text = "Do Not Sell Grey And White Items", dbKey = "Do Not Sell Grey And White Items"},
     {text = "Limit Selling to 12 Items?", dbKey = "Limit Selling to 12 Items?"},
     {text = "Disable Auto-Equip Mythic BoE", dbKey = "Disable Auto-Equip Mythic BoE"},
     {text = "Equip BoE Bountied Items", dbKey = "Equip BoE Bountied Items"},
@@ -353,8 +354,9 @@ function AH.CreateOptionPanels()
     description_ah:SetText("Main options for AttuneHelper.")
 
     -- General Options Panel
-    local generalOptionsPanel = CreateFrame("Frame", "AttuneHelperGeneralOptionsPanel", mainPanel)
-    generalOptionsPanel.name = "General Logic"
+	
+	local generalOptionsPanel = CreateFrame("Frame", "AttuneHelperGeneralOptionsPanel", mainPanel)
+    generalOptionsPanel.name = "General Logic - AttuneHelper"
     generalOptionsPanel.parent = mainPanel.name
     InterfaceOptions_AddCategory(generalOptionsPanel)
     
@@ -712,23 +714,10 @@ function AH.InitializeThemeOptions()
     
     table.insert(AH.general_option_checkboxes, miniModeCheckbox)
     AH.theme_option_controls.miniModeCheckbox = miniModeCheckbox
-    
-    -- ʕ •ᴥ•ʔ✿ Hide Disenchant Button Checkbox ✿ ʕ •ᴥ•ʔ
-    local hideDisenchantCheckbox = AH.CreateCheckbox("Hide Disenchant Button", themePanel, 16, yOffset - 35, true, "Hide Disenchant Button")
-    hideDisenchantCheckbox:SetPoint("TOPLEFT", miniModeCheckbox, "BOTTOMLEFT", 0, -10)
-
-    hideDisenchantCheckbox:SetScript("OnClick", function(self)
-        AttuneHelperDB["Hide Disenchant Button"] = self:GetChecked() and 1 or 0
-        AH.SaveSettingsForced()
-        AH.UpdateDisenchantButtonVisibility()
-    end)
-    
-    table.insert(AH.general_option_checkboxes, hideDisenchantCheckbox)
-    AH.theme_option_controls.hideDisenchantCheckbox = hideDisenchantCheckbox
 
     -- ʕ •ᴥ•ʔ✿ Language Selection (Theme Panel) ✿ ʕ •ᴥ•ʔ
     local langLabelT = themePanel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    langLabelT:SetPoint("TOPLEFT", hideDisenchantCheckbox, "BOTTOMLEFT", 0, -20)
+    langLabelT:SetPoint("TOPLEFT",  miniModeCheckbox, "BOTTOMLEFT", 0, -20)
     langLabelT:SetText(AH.t("Select Language:"))
 
     local langDDT = CreateFrame("Frame", "AttuneHelperLanguageDropdownTheme", themePanel, "UIDropDownMenuTemplate")
@@ -759,6 +748,9 @@ function AH.InitializeThemeOptions()
                 UIDropDownMenu_SetText(langDDT, btn.text)
                 AH.SetLocale(btn.value)
                 AH.SaveAllSettings()
+				--Reloading some texts that are generally only loaded on startup
+				AH.ReCreateButtons()
+				AH.LoadPopUps()
             end
             info.checked = (opt.code == (AttuneHelperDB["Language"] or "default"))
             UIDropDownMenu_AddButton(info)
@@ -813,7 +805,7 @@ end
 ------------------------------------------------------------------------
 function AH.CreateGeneralOptionsPanel(mainPanel)
     local generalOptionsPanel = CreateFrame("Frame", "AttuneHelperGeneralOptionsPanel", mainPanel)
-    generalOptionsPanel.name = "General Logic"
+    generalOptionsPanel.name = "General Logic - AttuneHelper"
     generalOptionsPanel.parent = mainPanel.name
     InterfaceOptions_AddCategory(generalOptionsPanel)
 

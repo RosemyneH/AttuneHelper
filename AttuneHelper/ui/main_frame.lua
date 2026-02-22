@@ -173,11 +173,6 @@ function AH.UpdateDisplayMode()
         AH.UpdateItemCountText()
     end
     AH.ApplyButtonTheme(AttuneHelperDB["Button Theme"])
-    
-    -- ʕ •ᴥ•ʔ✿ Update disenchant button visibility ✿ ʕ •ᴥ•ʔ
-    if AH.UpdateDisenchantButtonVisibility then
-        AH.UpdateDisenchantButtonVisibility()
-    end
 end
 
 -- Export for legacy compatibility
