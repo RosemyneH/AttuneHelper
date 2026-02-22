@@ -1042,19 +1042,23 @@ function AH.SetAHSetToEquipped()
     print("|cffffd200[AttuneHelper]|r Deleted previous AHSetList Items.")
 
     local slotsList = { "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot", "WristSlot",
-        "WaistSlot", "LegsSlot", "FeetSlot", "Finger0Slot", "Finger1Slot", "Trinket0Slot", "Trinket1Slot", "MainHandSlot",
+        "HandsSlot", "WaistSlot", "LegsSlot", "FeetSlot", "Finger0Slot", "Finger1Slot", "Trinket0Slot", "Trinket1Slot", "MainHandSlot",
         "SecondaryHandSlot", "RangedSlot" }
-    local slotNumberMapping = { Finger0Slot = 11, Finger1Slot = 12, Trinket0Slot = 13, Trinket1Slot = 14, MainHandSlot = 16, SecondaryHandSlot = 17 }
 
-    for i, slotName in ipairs(slotsList) do
-        local eqID = GetInventoryItemID("player", i)
+    for _, slotName in ipairs(slotsList) do
+        local invSlotID = GetInventorySlotInfo(slotName)
+        local eqID = invSlotID and GetInventoryItemID("player", invSlotID) or nil
         if eqID then
-            local equippedItemLink = GetInventoryItemLink("player", i)
+            local equippedItemLink = GetInventoryItemLink("player", invSlotID)
             local equippedItemName = GetItemInfo(equippedItemLink)
             if equippedItemName then
                 -- ʕ •ᴥ•ʔ✿ Use enhanced identifier for duplicate name handling ✿ ʕ •ᴥ•ʔ
                 local identifier = AH.CreateItemIdentifier(equippedItemLink, equippedItemName)
                 AHSetList[identifier] = slotName
+                -- Keep legacy name key for compatibility with name-based set checks.
+                if not AHSetList[equippedItemName] then
+                    AHSetList[equippedItemName] = slotName
+                end
                 print("|cffffd200[AH]|r '" .. equippedItemName .. "' (ID: " .. (AH.GetItemIDFromLink(equippedItemLink) or "unknown") .. 
                     ") added to AHSet, designated for slot " .. slotName .. ".")
             end
