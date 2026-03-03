@@ -35,6 +35,7 @@ AH.general_options_list_for_checkboxes = {
     {text = "Equip New Affixes Only", dbKey = "EquipNewAffixesOnly"},
     {text = "Prioritize Low iLvl for Auto-Equip", dbKey = "Prioritize Low iLvl for Auto-Equip"},
     {text = "Enable Vendor Sell Confirmation Dialog", dbKey = "EnableVendorSellConfirmationDialog"},
+    {text = "Draggable by Right Click", dbKey = "Draggable by Right Click"},
     {text = "Use Bag 1 for Disenchant", dbKey = "Use Bag 1 for Disenchant"}
 }
 
@@ -79,6 +80,36 @@ function AH.CreateCheckbox(t, p, x, y, iG, dkO)
     
     cb.dbKey = idK
     return cb
+end
+
+function AH.ApplyGeneralOptionTooltip(cb, dbKey)
+    if not cb or not dbKey then
+        return
+    end
+
+    if dbKey == "Sell Attuned Mythic Gear?" then
+        cb:SetScript("OnEnter", function(s)
+            GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+            GameTooltip:SetText(AH.t("Sell Attuned Mythic Gear?"))
+            GameTooltip:AddLine(
+                AH.t("This setting is recommended to be off due to the fact that disenchanting Mythic Gear results in honor and arena points."),
+                1, 0.82, 0.2, true
+            )
+            GameTooltip:Show()
+        end)
+        cb:SetScript("OnLeave", GameTooltip_Hide)
+    elseif dbKey == "Do Not Sell Grey And White Items" then
+        cb:SetScript("OnEnter", function(s)
+            GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+            GameTooltip:SetText(AH.t("Do Not Sell Grey And White Items"))
+            GameTooltip:AddLine(
+                AH.t("With this setting off, it will not vendor non-BoP white/grey items if the item can be attuned."),
+                1, 0.82, 0.2, true
+            )
+            GameTooltip:Show()
+        end)
+        cb:SetScript("OnLeave", GameTooltip_Hide)
+    end
 end
 
 -- Export for legacy compatibility
@@ -457,6 +488,7 @@ function AH.InitializeOptionCheckboxes()
     local gYO = -60
     for _, oD in ipairs(AH.general_options_list_for_checkboxes) do
         local cb = AH.CreateCheckbox(oD.text, generalOptionsPanel, 16, gYO, true, oD.dbKey)
+        AH.ApplyGeneralOptionTooltip(cb, oD.dbKey)
         table.insert(AH.general_option_checkboxes, cb)
         
         if oD.dbKey == "EquipNewAffixesOnly" then
@@ -816,6 +848,7 @@ function AH.CreateGeneralOptionsPanel(mainPanel)
     local yOffset = -50
     for i, opt in ipairs(AH.general_options_list_for_checkboxes) do
         local cb = AH.CreateCheckbox(opt.text, generalOptionsPanel, 16, yOffset, true, opt.dbKey)
+        AH.ApplyGeneralOptionTooltip(cb, opt.dbKey)
         table.insert(AH.general_option_checkboxes, cb)
         
         -- ʕ •ᴥ•ʔ✿ Add click handlers for general option checkboxes ✿ ʕ •ᴥ•ʔ

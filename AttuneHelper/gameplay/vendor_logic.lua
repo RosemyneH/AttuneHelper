@@ -7,16 +7,73 @@ local AH = _G.AttuneHelper
 function AH.GetQualifyingVendorItems()
     local itemsToVendor = {}
     local boeScanTT = nil
+    local useGreyWhiteVendorRules = (AttuneHelperDB["Do Not Sell Grey And White Items"] ~= 1)
+    local serverBagMap = {
+        [0] = 0xFF,
+        [1] = 0x13,
+        [2] = 0x14,
+        [3] = 0x15,
+        [4] = 0x16
+    }
 
     AH.print_debug_vendor_preview("=== GetQualifyingVendorItems: Starting scan ===")
 
+    local function NativeToServerBagSlot(nativeBag, nativeSlot)
+        if not nativeBag or not nativeSlot then return nil, nil end
+
+        if nativeBag == 0 then
+            return 0xFF, 22 + nativeSlot
+        end
+
+        local serverBag = serverBagMap[nativeBag]
+        if serverBag then
+            return serverBag, nativeSlot - 1
+        end
+
+        return nil, nil
+    end
+
+    local function IsSoulboundFromNativeBagSlot(nativeBag, nativeSlot)
+        local serverBag, serverSlot = NativeToServerBagSlot(nativeBag, nativeSlot)
+        if serverBag and _G.Custom_IsItemSoulbound then
+            local ok, result = pcall(_G.Custom_IsItemSoulbound, serverBag, serverSlot)
+            if ok then
+                return result == true or result == 1
+            end
+        end
+
+        -- Fallback for bags we cannot map (e.g. bank bags)
+        if nativeBag and nativeSlot then
+            if not boeScanTT then
+                boeScanTT = CreateFrame("GameTooltip", "AHBoEScanVendor", UIParent, "GameTooltipTemplate")
+            end
+            boeScanTT:SetOwner(UIParent, "ANCHOR_NONE")
+            boeScanTT:SetBagItem(nativeBag, nativeSlot)
+            for i = 1, boeScanTT:NumLines() do
+                local lt = _G[boeScanTT:GetName() .. "TextLeft" .. i]
+                if lt and string.find(lt:GetText() or "", _G.ITEM_SOULBOUND) then
+                    boeScanTT:Hide()
+                    return true
+                end
+            end
+            boeScanTT:Hide()
+        end
+
+        return false
+    end
+
     local function IsBoEUnboundForVendorCheck(itemID, bag, slot_idx)
-        if not itemID then return false end
+        if not itemID or not bag or not slot_idx then
+            return false
+        end
+
         if not boeScanTT then
             boeScanTT = CreateFrame("GameTooltip", "AHBoEScanVendor", UIParent, "GameTooltipTemplate")
         end
+
         boeScanTT:SetOwner(UIParent, "ANCHOR_NONE")
         boeScanTT:SetHyperlink("item:" .. itemID)
+
         local isBoE = false
         for i = 1, boeScanTT:NumLines() do
             local lt = _G[boeScanTT:GetName() .. "TextLeft" .. i]
@@ -25,19 +82,13 @@ function AH.GetQualifyingVendorItems()
                 break
             end
         end
-        if isBoE and bag and slot_idx then
-            boeScanTT:SetOwner(UIParent, "ANCHOR_NONE")
-            boeScanTT:SetBagItem(bag, slot_idx)
-            for i = 1, boeScanTT:NumLines() do
-                local lt = _G[boeScanTT:GetName() .. "TextLeft" .. i]
-                if lt and string.find(lt:GetText() or "", _G.ITEM_SOULBOUND) then
-                    boeScanTT:Hide()
-                    return false
-                end
-            end
-        end
         boeScanTT:Hide()
-        return isBoE
+
+        if not isBoE then
+            return false
+        end
+
+        return not IsSoulboundFromNativeBagSlot(bag, slot_idx)
     end
 
     -- Determine which bags to scan (include bank if open)
@@ -93,7 +144,7 @@ function AH.GetQualifyingVendorItems()
                         end
                     end
 
-                    if not skip and AHIgnoreList[n] then
+                    if not skip and (AHIgnoreList[n] or AHIgnoreList["id:" .. tostring(id)]) then
                         skip = true
                         skipReason = "In AHIgnore list"
                     end
@@ -126,8 +177,8 @@ function AH.GetQualifyingVendorItems()
                         end
                     end
 
-                    -- Check attunement progress
-                    if not skip then
+                    -- Check attunement progress unless grey/white special rules are enabled
+                    if not skip and ((q and q > 1) or (not useGreyWhiteVendorRules)) then
                         local thisVariantProgress = 0
                         if _G.GetItemLinkAttuneProgress then
                             local progressSuccess, progress = pcall(GetItemLinkAttuneProgress, link)
@@ -143,44 +194,70 @@ function AH.GetQualifyingVendorItems()
                             skipReason = "This variant only " .. thisVariantProgress .. "% attuned"
                         end
                     end
-					
-					-- Check poor or normal quality
-					if not skip and (AttuneHelperDB["Do Not Sell Grey And White Items"] == 1) and  ((q == 1) or (q == 0)) then
-                        skip = true
-                        skipReason = "Item is attunable by other accounts."
-                    end
 
                     -- Final qualification checks
                     if not skip then
-                        local isBoEU, isMSuccess, isM = false, true, false
-                        
-                        local boeSuccess, boeResult = pcall(IsBoEUnboundForVendorCheck, id, b, s)
-                        if boeSuccess then
-                            isBoEU = boeResult
-                        end
-                        
-                        isMSuccess, isM = pcall(AH.IsMythic, id)
-                        if not isMSuccess then
-                            isM = false
-                        end
-                        
-                        local noSellBoE = (AttuneHelperDB["Do Not Sell BoE Items"] == 1 and isBoEU)
-                        local sellM = (AttuneHelperDB["Sell Attuned Mythic Gear?"] == 1)
-                        local doSell = (isM and sellM) or not isM
+                        local isSoulbound = IsSoulboundFromNativeBagSlot(b, s)
+                        local isAttunableBySomeone = IsAttunableBySomeone(id)
 
-                        if doSell and not noSellBoE then
-                            table.insert(itemsToVendor, {
-                                name = n,
-                                link = link,
-                                id = id,
-                                quality = q,
-                                bag = b,
-                                slot = s
-                            })
-                            AH.print_debug_vendor_preview("GetQualifying: ✓ ADDING to vendor list: " .. n)
+                        local shouldSellByQuality = false
+                        local qualityReason = ""
+                        if q == 0 then
+                            shouldSellByQuality = true
+                            qualityReason = "Grey quality"
+                        elseif q == 1 then
+                            shouldSellByQuality = isSoulbound or (not isAttunableBySomeone)
+                            qualityReason = shouldSellByQuality and
+                                "White quality (soulbound or not attunable by someone)" or
+                                "White quality not soulbound and attunable by someone"
+                        end
+
+                        if useGreyWhiteVendorRules and (q == 0 or q == 1) then
+                            if shouldSellByQuality then
+                                table.insert(itemsToVendor, {
+                                    name = n,
+                                    link = link,
+                                    id = id,
+                                    quality = q,
+                                    bag = b,
+                                    slot = s
+                                })
+                                AH.print_debug_vendor_preview("GetQualifying: ✓ ADDING to vendor list: " .. n .. " (" .. qualityReason .. ")")
+                            else
+                                skip = true
+                                skipReason = qualityReason
+                            end
                         else
-                            skip = true
-                            skipReason = "BoE/Mythic rules (doSell=" .. tostring(doSell) .. ", noSellBoE=" .. tostring(noSellBoE) .. ")"
+                            local isBoEU, isMSuccess, isM = false, true, false
+
+                            local boeSuccess, boeResult = pcall(IsBoEUnboundForVendorCheck, id, b, s)
+                            if boeSuccess then
+                                isBoEU = boeResult
+                            end
+
+                            isMSuccess, isM = pcall(AH.IsMythic, id)
+                            if not isMSuccess then
+                                isM = false
+                            end
+
+                            local noSellBoE = (AttuneHelperDB["Do Not Sell BoE Items"] == 1 and isBoEU)
+                            local sellM = (AttuneHelperDB["Sell Attuned Mythic Gear?"] == 1)
+                            local doSell = (isM and sellM) or not isM
+
+                            if doSell and not noSellBoE then
+                                table.insert(itemsToVendor, {
+                                    name = n,
+                                    link = link,
+                                    id = id,
+                                    quality = q,
+                                    bag = b,
+                                    slot = s
+                                })
+                                AH.print_debug_vendor_preview("GetQualifying: ✓ ADDING to vendor list: " .. n)
+                            else
+                                skip = true
+                                skipReason = "BoE/Mythic rules (doSell=" .. tostring(doSell) .. ", noSellBoE=" .. tostring(noSellBoE) .. ")"
+                            end
                         end
                     end
 
@@ -197,6 +274,42 @@ function AH.GetQualifyingVendorItems()
     return itemsToVendor
 end
 _G.GetQualifyingVendorItems = AH.GetQualifyingVendorItems
+
+function AH.AddCursorItemToIgnore()
+    if not CursorHasItem() then
+        return false
+    end
+
+    local cursorType, cursorID, cursorLink = GetCursorInfo()
+    if cursorType ~= "item" then
+        return false
+    end
+
+    local itemName = GetItemInfo(cursorLink or cursorID)
+    if not itemName then
+        return false
+    end
+
+    local idKey = cursorID and ("id:" .. tostring(cursorID)) or nil
+    local isAlreadyIgnored = AHIgnoreList[itemName] or (idKey and AHIgnoreList[idKey])
+
+    if isAlreadyIgnored then
+        AHIgnoreList[itemName] = nil
+        if idKey then
+            AHIgnoreList[idKey] = nil
+        end
+        print("|cffffd200[Attune Helper]|r Removed from ignore list: " .. itemName)
+    else
+        AHIgnoreList[itemName] = true
+        if idKey then
+            AHIgnoreList[idKey] = true
+        end
+        print("|cffffd200[Attune Helper]|r Added to ignore list: " .. itemName)
+    end
+
+    ClearCursor()
+    return true
+end
 
 ------------------------------------------------------------------------
 -- Actually sell the items
@@ -310,4 +423,4 @@ AH.SetupVendorDialog = function()
 end
 
 -- Initialize the dialog immediately
-AH.SetupVendorDialog() 
+AH.SetupVendorDialog()

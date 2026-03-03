@@ -4,6 +4,17 @@ local AH = _G.AttuneHelper
 local showOnShift = { "toggleAutoEquip", "AHSetUpdate", "sort" }
 local hideOnShift = { "equipAll", "openSettings", "vendor" }
 
+local function AttachRightClickDrag(button)
+    if not button then return end
+
+    button:HookScript("OnMouseDown", function(s, mouseButton)
+        AH.StartRightClickDragFromWidget(s, mouseButton)
+    end)
+    button:HookScript("OnMouseUp", function(_, mouseButton)
+        AH.StopRightClickDrag(mouseButton)
+    end)
+end
+
 ------------------------------------------------------------------------
 -- Button creation helper
 ------------------------------------------------------------------------
@@ -54,6 +65,8 @@ function AH.CreateButton(name, parentFrame, text, relativeFrame, point, x, y, wi
     b:SetBackdropColor(0, 0, 0, 0.5)
     b:SetBackdropBorderColor(1, 1, 1, 1)
 
+    AttachRightClickDrag(b)
+
     return b
 end
 
@@ -77,11 +90,13 @@ function AH.CreateMiniIconButton(name, parent, iconPath, size, tooltipText)
     hl:SetBlendMode("ADD")
     hl:SetVertexColor(0.2, 0.2, 0.2, 0.3)
 
-    btn:SetScript("OnMouseDown", function(s)
+    btn:SetScript("OnMouseDown", function(s, mouseButton)
         s:GetNormalTexture():SetVertexColor(0.75, 0.75, 0.75)
+        AH.StartRightClickDragFromWidget(s, mouseButton)
     end)
-    btn:SetScript("OnMouseUp", function(s)
+    btn:SetScript("OnMouseUp", function(s, mouseButton)
         s:GetNormalTexture():SetVertexColor(1, 1, 1)
+        AH.StopRightClickDrag(mouseButton)
     end)
 
     -- Only add simple tooltip for non-equip/non-vendor buttons initially
@@ -416,7 +431,15 @@ function AH.SetupMainButtonHandlers()
 
     -- ʕ •ᴥ•ʔ✿ Vendor button - sells attuned items ✿ ʕ •ᴥ•ʔ
     AH.UI.buttons.vendor:SetScript("OnClick", function(self)
+        if CursorHasItem() and AH.AddCursorItemToIgnore and AH.AddCursorItemToIgnore() then
+            return
+        end
         AH.VendorAttunedItems(self)
+    end)
+    AH.UI.buttons.vendor:SetScript("OnReceiveDrag", function(self)
+        if AH.AddCursorItemToIgnore then
+            AH.AddCursorItemToIgnore()
+        end
     end)
 
     -- Vendor Attuned Button tooltip
@@ -446,6 +469,7 @@ function AH.SetupMainButtonHandlers()
             GameTooltip:AddLine(AH.t("Open merchant window to sell these items."), 1, 0.8, 0.2, true)
         end
         GameTooltip:AddLine(" ") -- Empty line for spacing
+        GameTooltip:AddLine(AH.t("Drag an item and left-click to add it to AHIgnore."), 0.6, 0.9, 1, true)
         GameTooltip:AddLine(AH.t("Hold Shift for additional options"), 0.7, 0.9, 1, true)
         GameTooltip:Show()
     end)
@@ -624,6 +648,13 @@ function AH.SetupMiniButtonHandlers()
                     _G.VendorAttunedButton:GetScript("OnClick")(self)
                 end
             end)
+            AH.UI.miniButtons.vendor:SetScript("OnReceiveDrag", function(self)
+                if _G.VendorAttunedButton and _G.VendorAttunedButton:GetScript("OnReceiveDrag") then
+                    _G.VendorAttunedButton:GetScript("OnReceiveDrag")(self)
+                elseif AH.AddCursorItemToIgnore then
+                    AH.AddCursorItemToIgnore()
+                end
+            end)
 
             -- Setup detailed tooltip for mini vendor button
             AH.UI.miniButtons.vendor:SetScript("OnEnter", function(s)
@@ -652,6 +683,7 @@ function AH.SetupMiniButtonHandlers()
                     GameTooltip:AddLine(AH.t("Open merchant window to sell these items."), 1, 0.8, 0.2, true)
                 end
                 GameTooltip:AddLine(" ") -- Empty line for spacing
+                GameTooltip:AddLine(AH.t("Drag an item and left-click to add it to AHIgnore."), 0.6, 0.9, 1, true)
                 GameTooltip:AddLine(AH.t("Hold Shift for additional options"), 0.7, 0.9, 1, true)
                 GameTooltip:Show()
             end)

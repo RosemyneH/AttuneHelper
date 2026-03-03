@@ -78,97 +78,6 @@ end
 _G.IsMythic = AH.IsMythic
 
 ------------------------------------------------------------------------
--- ʕ •ᴥ•ʔ✿ Enhanced item identification system for duplicate name handling ✿ ʕ •ᴥ•ʔ
-------------------------------------------------------------------------
-function AH.CreateItemIdentifier(itemLink, itemName)
-    if not itemLink then return itemName end
-    
-    local itemId = AH.GetItemIDFromLink(itemLink)
-    if not itemId then return itemName end -- Fallback to name if no ID
-    
-    -- Create unique identifier: "ItemName|ItemID"
-    return itemName .. "|" .. tostring(itemId)
-end
-
-function AH.GetItemNameFromIdentifier(identifier)
-    if not identifier then return nil end
-    
-    -- Extract name from "ItemName|ItemID" format
-    local name = string.match(identifier, "^(.-)|")
-    return name or identifier -- Return original if no separator found
-end
-
-function AH.GetItemIDFromIdentifier(identifier)
-    if not identifier then return nil end
-    
-    -- Extract ID from "ItemName|ItemID" format
-    local id = string.match(identifier, "|(%d+)$")
-    return id and tonumber(id) or nil
-end
-
--- Enhanced item comparison for duplicate detection
-function AH.AreItemsSameType(itemLink1, itemLink2)
-    if not itemLink1 or not itemLink2 then return false end
-    
-    local name1, _, _, _, _, _, _, _, equipLoc1 = GetItemInfo(itemLink1)
-    local name2, _, _, _, _, _, _, _, equipLoc2 = GetItemInfo(itemLink2)
-    
-    -- Same name and equip location = same type
-    return name1 == name2 and equipLoc1 == equipLoc2
-end
-
--- Priority comparison for items of the same type
-function AH.CompareItemPriority(itemLink1, itemLink2)
-    if not itemLink1 or not itemLink2 then return false end
-    
-    -- First priority: Attunable > Set items
-    local isAttunable1 = AH.IsItemAttunable(itemLink1)
-    local isAttunable2 = AH.IsItemAttunable(itemLink2)
-    
-    if isAttunable1 ~= isAttunable2 then
-        return isAttunable1 -- Attunable items have priority
-    end
-    
-    -- Second priority: Higher forge level
-    local forge1 = AH.GetForgeLevelFromLink(itemLink1)
-    local forge2 = AH.GetForgeLevelFromLink(itemLink2)
-    
-    if forge1 ~= forge2 then
-        return forge1 > forge2 -- Higher forge level wins
-    end
-    
-    -- Third priority: Lower attunement progress (more room to grow)
-    local progress1 = _G.GetItemLinkAttuneProgress and GetItemLinkAttuneProgress(itemLink1) or 0
-    local progress2 = _G.GetItemLinkAttuneProgress and GetItemLinkAttuneProgress(itemLink2) or 0
-    
-    if progress1 ~= progress2 then
-        return progress1 < progress2 -- Lower progress wins
-    end
-    
-    -- Fourth priority: Lower item level (if enabled)
-    if AttuneHelperDB["Prioritize Low iLvl for Auto-Equip"] == 1 then
-        local _, _, _, ilvl1 = GetItemInfo(itemLink1)
-        local _, _, _, ilvl2 = GetItemInfo(itemLink2)
-        if ilvl1 and ilvl2 and ilvl1 ~= ilvl2 then
-            return ilvl1 < ilvl2 -- Lower item level wins
-        end
-    end
-    
-    -- If all else is equal, prefer the first item
-    return true
-end
-
--- Helper function to check if item is attunable
-function AH.IsItemAttunable(itemLink)
-    if not itemLink then return false end
-    
-    local itemId = AH.GetItemIDFromLink(itemLink)
-    if not itemId then return false end
-    
-    return _G.CanAttuneItemHelper and CanAttuneItemHelper(itemId) == 1
-end
-
-------------------------------------------------------------------------
 -- ʕ •ᴥ•ʔ✿ Optimized Wait helper with memory management ✿ ʕ •ᴥ•ʔ
 ------------------------------------------------------------------------
 local waitTable = setmetatable({}, {__mode = "k"})  -- Weak keys for memory efficiency
@@ -247,7 +156,6 @@ function AH.InitializeDefaultSettings()
     if AttuneHelperDB["MiniFramePosition"] == nil then AttuneHelperDB["MiniFramePosition"] = { "CENTER", UIParent, "CENTER", 0, 0 } end
     if AttuneHelperDB["Disable Two-Handers"] == nil then AttuneHelperDB["Disable Two-Handers"] = 0 end
     if AttuneHelperDB["Language"] == nil then AttuneHelperDB["Language"] = "default" end
-	if AttuneHelperDB["Do Not Sell Grey And White Items"] == nil then AttuneHelperDB["Do Not Sell Grey And White Items"] = 1 end
 
     -- Handle legacy setting migration
     if AttuneHelperDB["EquipUntouchedVariants"] ~= nil and AttuneHelperDB["EquipNewAffixesOnly"] == nil then
@@ -279,7 +187,7 @@ function AH.InitializeDefaultSettings()
         ["Sell Attuned Mythic Gear?"] = 0, 
         ["Auto Equip Attunable After Combat"] = 0, 
         ["Do Not Sell BoE Items"] = 1,
-		["Do Not Sell Grey And White Items"] = 1,
+        ["Do Not Sell Grey And White Items"] = 0,
         ["Limit Selling to 12 Items?"] = 0, 
         ["Disable Auto-Equip Mythic BoE"] = 1, 
         ["Equip BoE Bountied Items"] = 0,
@@ -287,6 +195,8 @@ function AH.InitializeDefaultSettings()
         ["EquipNewAffixesOnly"] = 0, 
         ["Prioritize Low iLvl for Auto-Equip"] = 1,
         ["EnableVendorSellConfirmationDialog"] = 1,
+        ["Draggable by Right Click"] = 1,
+        ["Hide Disenchant Button"] = 0,  -- ʕ •ᴥ•ʔ✿ Show disenchant button by default ✿ ʕ •ᴥ•ʔ
         ["Use Bag 1 for Disenchant"] = 0,  -- ʕ •ᴥ•ʔ✿ Use bag 0 by default ✿ ʕ •ᴥ•ʔ
         -- ʕ •ᴥ•ʔ✿ Weapon type control options ✿ ʕ •ᴥ•ʔ
         ["Allow MainHand 1H Weapons"] = 1,
@@ -315,6 +225,109 @@ function AH.InitializeDefaultSettings()
             AttuneHelperDB[slotName] = defValue 
         end
     end
+    
+	-- ʕ •ᴥ•ʔ✿ Default ignored items (only seeded once, never overwritten) ✿ ʕ •ᴥ•ʔ
+    -- AHIgnoreList is keyed by item name (string). A nil value means
+    -- the user explicitly removed it; only seed if the key is absent.
+    local defaultIgnoreItemIDs = {
+        -- Ring of the Kirin Tor
+        44935, 45690, 48956,
+        -- Band of the Kirin Tor
+        40586, 45688, 48954,
+        -- Loop of the Kirin Tor
+        44934, 45689, 48955,
+        -- Signet of the Kirin Tor
+        40585, 45691, 48957,
+        -- Miscellaneous
+        18608, 17074, 49496, 49302, 49888,
+        -- Questing
+        2944, 32649,
+        -- Ashen Verdict
+        50375, 50388, 50403, 50377, 50384, 50397, 50376, 50387, 50401, 52569, 52570, 52571, 50378, 50386, 50399,
+        -- Brood of Nozdormu
+        21196, 21197, 21198, 21199, 21201, 21202, 21203, 21204, 21206, 21207, 21208, 21209,
+        -- Crafting
+        28428, 28429, 28431, 28432, 28437, 28438, 28425, 28426, 28434, 28435, 28440, 28441,
+        23563, 23564, 28483, 28484, 41245, 41355, 5966,
+        -- Engineering
+        32473, 32480, 32472, 32476, 32461, 32495, 32475, 32478, 32474, 32479, 10502, 10543,
+        4368, 32494, 4385, 10500, 13503, 9149,
+        -- Leatherworking / Tailoring
+        4243, 4246, 14044, 41520, 10026, 4255, 7387,
+        -- T10 Hunter
+        50114, 51154, 50115, 51153, 50116, 51152, 50117, 51151, 50118, 51150,
+        -- T10 Warrior DPS
+        50078, 51214, 50079, 51213, 50080, 51212, 50081, 51211, 50082, 51210,
+        -- T10 Warrior Tank
+        50846, 51215, 50847, 51216, 50848, 51218, 50849, 51217, 50850, 51219,
+        -- T10 Paladin Holy
+        50865, 51166, 50866, 51168, 50867, 51167, 50868, 51169, 50869, 51165,
+        -- T10 Paladin Protection
+        50860, 51170, 50861, 51171, 50862, 51173, 50863, 51172, 50864, 51174,
+        -- T10 Paladin Retribution
+        50324, 51160, 50325, 51161, 50326, 51162, 50327, 51163, 50328, 51164,
+        -- T10 Death Knight Blood
+        50853, 51130, 50854, 51131, 50855, 51133, 50856, 51132, 50857, 51134,
+        -- T10 Death Knight Frost/Unholy
+        50094, 51129, 50095, 51128, 50096, 51127, 50097, 51126, 50098, 51125,
+        -- T10 Rogue
+        50105, 51185, 50089, 51187, 50090, 51186, 50087, 51189, 50088, 51188,
+        -- T10 Priest Holy/Disc
+        50769, 51177, 50768, 51176, 50767, 51175, 50766, 51179, 50765, 51178,
+        -- T10 Priest Shadow
+        50393, 51181, 50394, 51180, 50396, 51182, 50391, 51183, 50392, 51184,
+        -- T10 Shaman Elemental
+        50841, 51200, 50842, 51201, 50843, 51202, 50844, 51203, 50845, 51204,
+        -- T10 Shaman Enhancement
+        50830, 51195, 50831, 51196, 50832, 51197, 50833, 51198, 50834, 51199,
+        -- T10 Shaman Restoration
+        50835, 51190, 50836, 51191, 50837, 51192, 50838, 51193, 50839, 51194,
+        -- T10 Mage
+        50275, 51159, 50276, 51158, 50277, 51157, 50278, 51156, 50279, 51155,
+        -- T10 Warlock
+        50240, 51209, 50241, 51208, 50242, 51207, 50243, 51206, 50244, 51205,
+        -- T10 Druid Balance
+        50819, 51147, 50820, 51146, 50821, 51149, 50822, 51148, 50823, 51145,
+        -- T10 Druid Feral
+        50824, 51140, 50825, 51142, 50826, 51143, 50827, 51144, 50828, 51141,
+        -- T10 Druid Restoration
+        50106, 51139, 50107, 51138, 50108, 51137, 50109, 51136, 50113, 51135,
+        -- T0.5 Hunter
+        16680, 16676, 16681, 16675, 16678, 16679, 16677, 16674,
+        -- T0.5 Druid
+        16717, 16716, 16715, 16719, 16718, 16714, 16720, 16706,
+        -- T0.5 Mage
+        16685, 16684, 16683, 16682, 16687, 16689, 16686, 16688,
+        -- T0.5 Paladin
+        16723, 16724, 16725, 16728, 16729, 16722, 16726, 16727,
+        -- T0.5 Priest
+        16692, 16696, 16697, 16690, 16693, 16695, 16694, 16691,
+        -- T0.5 Rogue
+        16712, 16713, 16708, 16711, 16709, 16710, 16721, 16707,
+        -- T0.5 Shaman
+        16671, 16669, 16670, 16668, 16666, 16667, 16672, 16673,
+        -- T0.5 Warlock
+        16705, 16702, 16703, 16701, 16699, 16704, 16700, 16698,
+        -- T0.5 Warrior
+        16737, 16736, 16734, 16732, 16733, 16735, 16730, 16731,
+        -- Sunmote Gear (Cloth)
+        34342, 34339, 34233, 34202, 34170,
+        -- Sunmote Gear (Leather)
+        34234, 34244, 34245, 34212, 34211, 34195, 34209, 34188, 34169, 34351,
+        -- Sunmote Gear (Mail)
+        34229, 34350, 34332, 34208, 34186,
+        -- Sunmote Gear (Plate)
+        34167, 34243, 34345, 34180, 34216, 34215, 34193, 34192,
+        -- Tools
+        39505, 23821, 40772, 40768, 
+    }
+    for _, itemID in ipairs(defaultIgnoreItemIDs) do
+        local key = "id:" .. itemID
+        if AHIgnoreList[key] == nil then
+            AHIgnoreList[key] = true
+        end
+    end
+
 end
 _G.InitializeDefaultSettings = AH.InitializeDefaultSettings
 
@@ -335,3 +348,30 @@ function AH.ToggleSlotBlacklist(slotName)
 end
 _G.ToggleSlotBlacklist = AH.ToggleSlotBlacklist
 
+------------------------------------------------------------------------
+-- ʕ •ᴥ•ʔ✿ Disenchant button visibility control ✿ ʕ •ᴥ•ʔ
+------------------------------------------------------------------------
+function AH.UpdateDisenchantButtonVisibility()
+    local shouldHide = AttuneHelperDB["Hide Disenchant Button"] == 1
+    
+    -- Hide/show main frame disenchant button
+    if _G.AttuneHelperSortInventoryButton then
+        if shouldHide then
+            _G.AttuneHelperSortInventoryButton:Hide()
+        else
+            _G.AttuneHelperSortInventoryButton:Show()
+        end
+    end
+    
+    -- Hide/show mini frame disenchant button
+    if _G.AttuneHelperMiniSortButton then
+        if shouldHide then
+            _G.AttuneHelperMiniSortButton:Hide()
+        else
+            _G.AttuneHelperMiniSortButton:Show()
+        end
+    end
+    
+    AH.print_debug_general(string.format("Disenchant buttons %s", shouldHide and "hidden" or "shown"))
+end
+_G.UpdateDisenchantButtonVisibility = AH.UpdateDisenchantButtonVisibility

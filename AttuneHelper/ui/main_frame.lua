@@ -4,6 +4,60 @@ local AH = _G.AttuneHelper
 -- Store UI elements in the addon table for other modules to access
 AH.UI = AH.UI or {}
 
+local function IsRightClickDragEnabled()
+    return AttuneHelperDB and AttuneHelperDB["Draggable by Right Click"] == 1
+end
+
+function AH.ResolveDragTarget(widget)
+    local current = widget
+    while current do
+        if current == AH.UI.mainFrame or current == AH.UI.miniFrame then
+            return current
+        end
+        if not current.GetParent then
+            break
+        end
+        current = current:GetParent()
+    end
+    return nil
+end
+
+function AH.SaveFramePosition(frame)
+    if not frame then return end
+
+    local point, _, relativePoint, xOfs, yOfs = frame:GetPoint()
+    if frame == AH.UI.miniFrame then
+        AttuneHelperDB.MiniFramePosition = { point, UIParent, relativePoint, xOfs, yOfs }
+    else
+        AttuneHelperDB.FramePosition = { point, UIParent, relativePoint, xOfs, yOfs }
+    end
+end
+
+function AH.StartRightClickDragFromWidget(widget, mouseButton)
+    if mouseButton ~= "RightButton" or not IsRightClickDragEnabled() then
+        return
+    end
+
+    local target = AH.ResolveDragTarget(widget)
+    if target and target:IsMovable() then
+        target:StartMoving()
+        AH.UI.activeRightDragFrame = target
+    end
+end
+
+function AH.StopRightClickDrag(mouseButton)
+    if mouseButton and mouseButton ~= "RightButton" then
+        return
+    end
+
+    local target = AH.UI.activeRightDragFrame
+    if target then
+        target:StopMovingOrSizing()
+        AH.SaveFramePosition(target)
+        AH.UI.activeRightDragFrame = nil
+    end
+end
+
 ------------------------------------------------------------------------
 -- Background styles and theme paths
 ------------------------------------------------------------------------
@@ -76,8 +130,14 @@ function AH.CreateMainFrame()
 
     frame:SetScript("OnDragStop", function(s)
         s:StopMovingOrSizing()
-        local point, relativeTo, relativePoint, xOfs, yOfs = s:GetPoint()
-        AttuneHelperDB.FramePosition = {point, UIParent, relativePoint, xOfs, yOfs}
+        AH.SaveFramePosition(s)
+    end)
+
+    frame:HookScript("OnMouseDown", function(s, mouseButton)
+        AH.StartRightClickDragFromWidget(s, mouseButton)
+    end)
+    frame:HookScript("OnMouseUp", function(_, mouseButton)
+        AH.StopRightClickDrag(mouseButton)
     end)
 
     -- Initial backdrop setup

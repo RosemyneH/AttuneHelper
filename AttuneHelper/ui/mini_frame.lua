@@ -42,8 +42,14 @@ function AH.CreateMiniFrame()
 
     frame:SetScript("OnDragStop", function(s)
         s:StopMovingOrSizing()
-        local point, relativeTo, relativePoint, xOfs, yOfs = s:GetPoint()
-        AttuneHelperDB.MiniFramePosition = {point, UIParent, relativePoint, xOfs, yOfs}
+        AH.SaveFramePosition(s)
+    end)
+
+    frame:HookScript("OnMouseDown", function(s, mouseButton)
+        AH.StartRightClickDragFromWidget(s, mouseButton)
+    end)
+    frame:HookScript("OnMouseUp", function(_, mouseButton)
+        AH.StopRightClickDrag(mouseButton)
     end)
 
     -- Setup backdrop
