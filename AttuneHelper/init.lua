@@ -38,6 +38,7 @@ AH.isSCKLoaded = false
 AH.lastAttemptedSlotForEquip = nil
 AH.lastAttemptedItemTypeForEquip = nil
 AH.currentAttunableItemCount = 0
+AH.merchantWindowOpen = false
 
 -- Store in-case other modules need
 AH._addonName = addonName

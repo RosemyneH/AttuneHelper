@@ -128,6 +128,8 @@ function AH.RegisterEvents()
     AH.UI.mainFrame:RegisterEvent("QUEST_TURNED_IN")
     AH.UI.mainFrame:RegisterEvent("LOOT_CLOSED")
     AH.UI.mainFrame:RegisterEvent("ITEM_PUSH")
+    AH.UI.mainFrame:RegisterEvent("MERCHANT_SHOW")
+    AH.UI.mainFrame:RegisterEvent("MERCHANT_CLOSED")
 
     -- Set the event handler
     AH.UI.mainFrame:SetScript("OnEvent", AH.OnEvent)
@@ -245,6 +247,18 @@ function AH.OnEvent(self, event, arg1)
             -- ʕ •ᴥ•ʔ✿ ITEM_PUSH is very frequent, throttle heavily ✿ ʕ •ᴥ•ʔ
             AH.TriggerThrottledAutoEquip(InCombatLockdown() and 0.2 or 0.1)
         end)
+    elseif event == "MERCHANT_SHOW" then
+        if AH.SetMerchantWindowOpen then
+            AH.SetMerchantWindowOpen(true)
+        else
+            AH.merchantWindowOpen = true
+        end
+    elseif event == "MERCHANT_CLOSED" then
+        if AH.SetMerchantWindowOpen then
+            AH.SetMerchantWindowOpen(false)
+        else
+            AH.merchantWindowOpen = false
+        end
     elseif event == "PLAYER_REGEN_ENABLED" and AttuneHelperDB["Auto Equip Attunable After Combat"] == 1 then
         -- When leaving combat, do a full equip cycle with fresh cache
         AH.Wait(0.2, function()

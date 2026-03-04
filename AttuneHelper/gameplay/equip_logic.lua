@@ -382,7 +382,7 @@ _G.GetAttunableItemNamesList = AH.GetAttunableItemNamesList
 -- Main equip all logic - comprehensive equipment function
 ------------------------------------------------------------------------
 function AH.EquipAllAttunables()
-    if MerchantFrame and MerchantFrame:IsShown() then
+    if AH.IsVendorWindowOpen and AH.IsVendorWindowOpen() then
         return
     end
 

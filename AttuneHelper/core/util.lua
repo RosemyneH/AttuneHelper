@@ -93,6 +93,30 @@ end
 ------------------------------------------------------------------------
 -- Session state helpers
 ------------------------------------------------------------------------
+function AH.SetMerchantWindowOpen(isOpen)
+    AH.merchantWindowOpen = isOpen == true
+end
+_G.SetMerchantWindowOpen = AH.SetMerchantWindowOpen
+
+function AH.IsVendorWindowOpen()
+    if AH.merchantWindowOpen then
+        return true
+    end
+
+    local merchantFrame = _G.MerchantFrame
+    if merchantFrame and merchantFrame:IsShown() then
+        return true
+    end
+
+    local scootsVendorMaster = _G["ScootsVendor-Master"]
+    if scootsVendorMaster and scootsVendorMaster.IsShown and scootsVendorMaster:IsShown() then
+        return true
+    end
+
+    return false
+end
+_G.IsVendorWindowOpen = AH.IsVendorWindowOpen
+
 function AH.IsWeaponTypeForOffHandCheck(equipLoc)
     return equipLoc == "INVTYPE_WEAPON" or equipLoc == "INVTYPE_WEAPONMAINHAND" or equipLoc == "INVTYPE_WEAPONOFFHAND"
 end

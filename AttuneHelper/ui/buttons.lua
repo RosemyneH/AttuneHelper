@@ -465,7 +465,7 @@ function AH.SetupMainButtonHandlers()
             GameTooltip:AddLine(AH.t("No items will be sold based on current settings."), 0.8, 0.8, 0.8, true)
         end
 
-        if not (MerchantFrame and MerchantFrame:IsShown()) then
+        if not (AH.IsVendorWindowOpen and AH.IsVendorWindowOpen()) then
             GameTooltip:AddLine(AH.t("Open merchant window to sell these items."), 1, 0.8, 0.2, true)
         end
         GameTooltip:AddLine(" ") -- Empty line for spacing
@@ -679,7 +679,7 @@ function AH.SetupMiniButtonHandlers()
                     GameTooltip:AddLine(AH.t("No items will be sold based on current settings."), 0.8, 0.8, 0.8, true)
                 end
 
-                if not (MerchantFrame and MerchantFrame:IsShown()) then
+                if not (AH.IsVendorWindowOpen and AH.IsVendorWindowOpen()) then
                     GameTooltip:AddLine(AH.t("Open merchant window to sell these items."), 1, 0.8, 0.2, true)
                 end
                 GameTooltip:AddLine(" ") -- Empty line for spacing

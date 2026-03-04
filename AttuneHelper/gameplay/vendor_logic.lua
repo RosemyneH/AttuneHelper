@@ -315,7 +315,7 @@ end
 -- Actually sell the items
 ------------------------------------------------------------------------
 function AH.SellQualifiedItemsFromDialog(itemsToSellFromDialog)
-    if not MerchantFrame:IsShown() then
+    if not (AH.IsVendorWindowOpen and AH.IsVendorWindowOpen()) then
         AH.print_debug_vendor_preview("SellQualifiedItemsFromDialog: Merchant frame not shown.")
         return
     end
@@ -356,7 +356,7 @@ _G.SellQualifiedItemsFromDialog = AH.SellQualifiedItemsFromDialog
 -- Main vendor function called by button clicks
 ------------------------------------------------------------------------
 function AH.VendorAttunedItems(buttonSelf)
-    if not MerchantFrame:IsShown() then
+    if not (AH.IsVendorWindowOpen and AH.IsVendorWindowOpen()) then
         AH.print_debug_vendor_preview("VendorAttunedItems: Merchant frame not shown.")
         DEFAULT_CHAT_FRAME:AddMessage("|cffff0000[Attune Helper]|r You must have a merchant window open to vendor items.")
         return
