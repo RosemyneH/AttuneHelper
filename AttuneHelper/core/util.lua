@@ -2,6 +2,94 @@
 local AH = _G.AttuneHelper
 local flags = AH.flags or {}
 
+function AH.CreateItemIdentifier(itemLink, itemName)
+    if not itemLink then return itemName end
+    
+    local itemId = AH.GetItemIDFromLink(itemLink)
+    if not itemId then return itemName end -- Fallback to name if no ID
+    
+    -- Create unique identifier: "ItemName|ItemID"
+    return itemName .. "|" .. tostring(itemId)
+end
+
+function AH.GetItemNameFromIdentifier(identifier)
+    if not identifier then return nil end
+    
+    -- Extract name from "ItemName|ItemID" format
+    local name = string.match(identifier, "^(.-)|")
+    return name or identifier -- Return original if no separator found
+end
+
+function AH.GetItemIDFromIdentifier(identifier)
+    if not identifier then return nil end
+    
+    -- Extract ID from "ItemName|ItemID" format
+    local id = string.match(identifier, "|(%d+)$")
+    return id and tonumber(id) or nil
+end
+
+-- Enhanced item comparison for duplicate detection
+function AH.AreItemsSameType(itemLink1, itemLink2)
+    if not itemLink1 or not itemLink2 then return false end
+    
+    local name1, _, _, _, _, _, _, _, equipLoc1 = GetItemInfo(itemLink1)
+    local name2, _, _, _, _, _, _, _, equipLoc2 = GetItemInfo(itemLink2)
+    
+    -- Same name and equip location = same type
+    return name1 == name2 and equipLoc1 == equipLoc2
+end
+
+-- Priority comparison for items of the same type
+function AH.CompareItemPriority(itemLink1, itemLink2)
+    if not itemLink1 or not itemLink2 then return false end
+    
+    -- First priority: Attunable > Set items
+    local isAttunable1 = AH.IsItemAttunable(itemLink1)
+    local isAttunable2 = AH.IsItemAttunable(itemLink2)
+    
+    if isAttunable1 ~= isAttunable2 then
+        return isAttunable1 -- Attunable items have priority
+    end
+    
+    -- Second priority: Higher forge level
+    local forge1 = AH.GetForgeLevelFromLink(itemLink1)
+    local forge2 = AH.GetForgeLevelFromLink(itemLink2)
+    
+    if forge1 ~= forge2 then
+        return forge1 > forge2 -- Higher forge level wins
+    end
+    
+    -- Third priority: Lower attunement progress (more room to grow)
+    local progress1 = _G.GetItemLinkAttuneProgress and GetItemLinkAttuneProgress(itemLink1) or 0
+    local progress2 = _G.GetItemLinkAttuneProgress and GetItemLinkAttuneProgress(itemLink2) or 0
+    
+    if progress1 ~= progress2 then
+        return progress1 < progress2 -- Lower progress wins
+    end
+    
+    -- Fourth priority: Lower item level (if enabled)
+    if AttuneHelperDB["Prioritize Low iLvl for Auto-Equip"] == 1 then
+        local _, _, _, ilvl1 = GetItemInfo(itemLink1)
+        local _, _, _, ilvl2 = GetItemInfo(itemLink2)
+        if ilvl1 and ilvl2 and ilvl1 ~= ilvl2 then
+            return ilvl1 < ilvl2 -- Lower item level wins
+        end
+    end
+    
+    -- If all else is equal, prefer the first item
+    return true
+end
+
+-- Helper function to check if item is attunable
+function AH.IsItemAttunable(itemLink)
+    if not itemLink then return false end
+    
+    local itemId = AH.GetItemIDFromLink(itemLink)
+    if not itemId then return false end
+    
+    return _G.CanAttuneItemHelper and CanAttuneItemHelper(itemId) == 1
+end
+
 ------------------------------------------------------------------------
 -- Session state helpers
 ------------------------------------------------------------------------
