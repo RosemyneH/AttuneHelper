@@ -319,7 +319,7 @@ function AH.InitializeDefaultSettings()
         -- Sunmote Gear (Plate)
         34167, 34243, 34345, 34180, 34216, 34215, 34193, 34192,
         -- Tools
-        39505, 23821, 40772, 40768, 
+        39505, 23821, 40772, 40768, 21133, 22649, 6256, 19440, 21215, 20805, 21386, 21131, 20513, 20515, 20802, 20800, 20801, 
     }
     for _, itemID in ipairs(defaultIgnoreItemIDs) do
         local key = "id:" .. itemID
