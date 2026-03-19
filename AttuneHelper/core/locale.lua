@@ -54,7 +54,52 @@ local enUS = {
     ["Currently disabled."]                                                           = "Currently disabled.",
     ["Open Settings"]                                                                 = "Open Settings",
     ["Opens the General Logic Options settings page."]                                = "Opens the General Logic Options settings page.",
-    ["Hold Shift for additional options"]                                             = "Hold Shift for additional options"
+    ["Hold Shift for additional options"]                                             = "Hold Shift for additional options",
+    ["Background Color"]                                                              = "Background Color",
+    ["Equip Attunable Affixes up to:"]                                                = "Equip Attunable Affixes up to:",
+    ["Affix-Only Minimum Forge"]                                                      = "Affix-Only Minimum Forge",
+    ["Works only when 'Equip New Affixes Only' is enabled."]                         =
+    "Works only when 'Equip New Affixes Only' is enabled.",
+    ["'All Items' disables the forge threshold behavior."]                            =
+    "'All Items' disables the forge threshold behavior.",
+    ["When enabled, this setting favors affixes you have not attuned yet."]          =
+    "When enabled, this setting favors affixes you have not attuned yet.",
+    ["Use the dropdown to choose where lenient behavior ends."]                       =
+    "Use the dropdown to choose where lenient behavior ends.",
+    ["Items below the selected forge tier can equip even if already seen."]           =
+    "Items below the selected forge tier can equip even if already seen.",
+    ["At the selected tier and above, the addon prefers truly new affixes."]         =
+    "At the selected tier and above, the addon prefers truly new affixes.",
+    ["If a variant is already attuned, only higher forge tiers can still auto-equip."] =
+    "If a variant is already attuned, only higher forge tiers can still auto-equip.",
+    ["Example: with 'Warforged', duplicate Warforged is blocked, but Lightforged can still equip."] =
+    "Example: with 'Warforged', duplicate Warforged is blocked, but Lightforged can still equip.",
+    ["Below this tier: lenient equip behavior."]                                      = "Below this tier: lenient equip behavior.",
+    ["At this tier and above: strict new-affix behavior."]                            = "At this tier and above: strict new-affix behavior.",
+    ["When a variant already exists, only higher forge tiers can override."]          =
+    "When a variant already exists, only higher forge tiers can override.",
+    ["'All Items' applies strict behavior to every forge tier."]                      =
+    "'All Items' applies strict behavior to every forge tier.",
+    ["Use the dropdown to set the highest forge tier that ignores attunement history (inclusive)."] =
+    "Use the dropdown to set the highest forge tier that ignores attunement history (inclusive).",
+    ["Example: 'Warforged' allows Base/Titanforged/Warforged to equip even if already seen; Lightforged still requires a new affix or no prior variant."] =
+    "Example: 'Warforged' allows Base/Titanforged/Warforged to equip even if already seen; Lightforged still requires a new affix or no prior variant.",
+    ["'All Items' removes this forge-tier limit while keeping the strict new-affix preference."] =
+    "'All Items' removes this forge-tier limit while keeping the strict new-affix preference.",
+    ["Select the highest forge tier that can equip regardless of prior attunement history."] =
+    "Select the highest forge tier that can equip regardless of prior attunement history.",
+    ["This applies only while the checkbox is enabled."]                              =
+    "This applies only while the checkbox is enabled.",
+    ["Tiers above your selected value still require a truly new affix (or no variant attuned yet)."] =
+    "Tiers above your selected value still require a truly new affix (or no variant attuned yet).",
+    ["'All Items' removes the forge-tier cap."]                                       = "'All Items' removes the forge-tier cap.",
+    ["- Selected tier and up: unattuned variant only."]                               = "- Selected tier and up: unattuned variant only.",
+    ["- Does not check extra affix unlocks."]                                         = "- Does not check extra affix unlocks.",
+    ["- Base and TF - Equips all if Affix is attunable."]                             = "- Base and TF - Equips all if Affix is attunable.",
+    ["Hide Center Button in Normal Mode"]                                             = "Hide Center Button in Normal Mode",
+    ["Hides the center action button in normal view."]                                = "Hides the center action button in normal view.",
+    ["Hold Ctrl to show Open Settings and Update AHSet."]                             =
+    "Hold Ctrl to show Open Settings and Update AHSet."
 }
 
 local esES = { -- Reviewed by LiquidAP and Moonlight

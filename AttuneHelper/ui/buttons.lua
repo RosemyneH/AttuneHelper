@@ -1,11 +1,432 @@
 -- ʕ •ᴥ•ʔ✿ UI · Main buttons ✿ ʕ •ᴥ•ʔ
 local AH = _G.AttuneHelper
 --ʕ •ᴥ•ʔ✿ Button layouts ✿ ʕ •ᴥ•ʔ
-local showOnShift = { "toggleAutoEquip", "AHSetUpdate", "sort" }
-local hideOnShift = { "equipAll", "openSettings", "vendor" }
+local allButtons = { "equipAll", "openSettings", "vendor", "toggleAutoEquip", "AHSetUpdate", "sort", "equipAHSet" }
+
+local function IsEquipAHSetReferencedInLayout()
+    if not AttuneHelperDB then
+        return false
+    end
+    for _, modifierName in ipairs({ "Normal", "Shift", "Ctrl" }) do
+        for _, slotType in ipairs({ "Top", "Center", "Bottom" }) do
+            if AttuneHelperDB["Layout " .. modifierName .. " " .. slotType] == "equipAHSet" then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function IsEquipAHSetButtonEnabled()
+    return IsEquipAHSetReferencedInLayout()
+end
+
+local function GetButtonLayoutPreset()
+    if not AttuneHelperDB then
+        return "Standard"
+    end
+    local preset = AttuneHelperDB["Button Layout Preset"] or "Standard"
+    if preset == "Compact" then
+        return "Standard"
+    end
+    return preset
+end
+
+local function NormalizeLayoutButtonKey(key, fallback, showEquipAHSet)
+    if key == "equipAHSet" and not showEquipAHSet then
+        return fallback
+    end
+    for _, knownKey in ipairs(allButtons) do
+        if key == knownKey then
+            return key
+        end
+    end
+    return fallback
+end
+
+local function GetAllowedLayoutButtons(showEquipAHSet)
+    local allowed = {}
+    for _, key in ipairs(allButtons) do
+        if key ~= "equipAHSet" or showEquipAHSet then
+            table.insert(allowed, key)
+        end
+    end
+    return allowed
+end
+
+local function PickUniqueLayoutButton(preferred, fallback, used, allowed, showEquipAHSet)
+    local normalizedPreferred = NormalizeLayoutButtonKey(preferred, fallback, showEquipAHSet)
+    if normalizedPreferred and not used[normalizedPreferred] then
+        used[normalizedPreferred] = true
+        return normalizedPreferred
+    end
+
+    local normalizedFallback = NormalizeLayoutButtonKey(fallback, fallback, showEquipAHSet)
+    if normalizedFallback and not used[normalizedFallback] then
+        used[normalizedFallback] = true
+        return normalizedFallback
+    end
+
+    for _, key in ipairs(allowed) do
+        if not used[key] then
+            used[key] = true
+            return key
+        end
+    end
+
+    return normalizedFallback or fallback
+end
+
+local function GetCustomLayoutPair(stateKey, showEquipAHSet)
+    local dbTopKey = "Layout " .. stateKey .. " Top"
+    local dbBottomKey = "Layout " .. stateKey .. " Bottom"
+    local defaults = {
+        Normal = { top = "equipAll", bottom = "vendor" },
+        Shift = { top = "toggleAutoEquip", bottom = "sort" },
+        Ctrl = { top = "AHSetUpdate", bottom = "openSettings" }
+    }
+    local stateDefaults = defaults[stateKey] or defaults.Normal
+    local used = {}
+    local allowed = GetAllowedLayoutButtons(showEquipAHSet)
+    local topKey = PickUniqueLayoutButton(AttuneHelperDB and AttuneHelperDB[dbTopKey], stateDefaults.top, used, allowed, showEquipAHSet)
+    local bottomKey = PickUniqueLayoutButton(AttuneHelperDB and AttuneHelperDB[dbBottomKey], stateDefaults.bottom, used, allowed, showEquipAHSet)
+    return topKey, bottomKey
+end
+
+local function GetCustomLayoutTrio(stateKey, showEquipAHSet)
+    local dbTopKey = "Layout " .. stateKey .. " Top"
+    local dbCenterKey = "Layout " .. stateKey .. " Center"
+    local dbBottomKey = "Layout " .. stateKey .. " Bottom"
+    local defaults = {
+        Normal = { top = "equipAll", center = "openSettings", bottom = "vendor" },
+        Shift = { top = "toggleAutoEquip", center = "AHSetUpdate", bottom = "sort" },
+        Ctrl = { top = "AHSetUpdate", center = "openSettings", bottom = "sort" }
+    }
+    local stateDefaults = defaults[stateKey] or defaults.Normal
+    local used = {}
+    local allowed = GetAllowedLayoutButtons(showEquipAHSet)
+    local topKey = PickUniqueLayoutButton(AttuneHelperDB and AttuneHelperDB[dbTopKey], stateDefaults.top, used, allowed, showEquipAHSet)
+    local centerKey = PickUniqueLayoutButton(AttuneHelperDB and AttuneHelperDB[dbCenterKey], stateDefaults.center, used, allowed, showEquipAHSet)
+    local bottomKey = PickUniqueLayoutButton(AttuneHelperDB and AttuneHelperDB[dbBottomKey], stateDefaults.bottom, used, allowed, showEquipAHSet)
+    return topKey, centerKey, bottomKey
+end
+
+local function BuildShiftVisibilityLists()
+    local showOnShift = { "toggleAutoEquip", "AHSetUpdate", "sort" }
+    if IsEquipAHSetButtonEnabled() then
+        table.insert(showOnShift, "equipAHSet")
+    end
+    local hideOnShift = { "equipAll", "openSettings", "vendor" }
+    return showOnShift, hideOnShift
+end
+
+local function ApplyMainDefaultLayout(buttons)
+    local frame = AH.UI and AH.UI.mainFrame
+    if not frame or not buttons then
+        return
+    end
+
+    if buttons.equipAll then
+        buttons.equipAll:ClearAllPoints()
+        buttons.equipAll:SetPoint("TOP", frame, "TOP", 0, -5)
+    end
+    if buttons.openSettings and buttons.equipAll then
+        buttons.openSettings:ClearAllPoints()
+        buttons.openSettings:SetPoint("BOTTOM", buttons.equipAll, "BOTTOM", 0, -27)
+    end
+    if buttons.vendor and buttons.openSettings then
+        buttons.vendor:ClearAllPoints()
+        buttons.vendor:SetPoint("BOTTOM", buttons.openSettings, "BOTTOM", 0, -27)
+    end
+    if buttons.toggleAutoEquip then
+        buttons.toggleAutoEquip:ClearAllPoints()
+        buttons.toggleAutoEquip:SetPoint("TOP", frame, "TOP", 0, -5)
+    end
+    if buttons.AHSetUpdate and buttons.toggleAutoEquip then
+        buttons.AHSetUpdate:ClearAllPoints()
+        buttons.AHSetUpdate:SetPoint("BOTTOM", buttons.toggleAutoEquip, "BOTTOM", 0, -27)
+    end
+    if buttons.sort and buttons.AHSetUpdate then
+        buttons.sort:ClearAllPoints()
+        buttons.sort:SetPoint("BOTTOM", buttons.AHSetUpdate, "BOTTOM", 0, -27)
+    end
+    if buttons.equipAHSet and buttons.sort then
+        buttons.equipAHSet:ClearAllPoints()
+        buttons.equipAHSet:SetPoint("BOTTOM", buttons.sort, "BOTTOM", 0, -27)
+    end
+end
+
+local function ApplyMiniDefaultLayout(buttons)
+    local frame = AH.UI and AH.UI.miniFrame
+    if not frame or not buttons then
+        return
+    end
+
+    local size = (buttons.equipAll and buttons.equipAll:GetHeight()) or 24
+    local spacing = 4
+    local padding = (frame:GetHeight() - size) / 2
+
+    if buttons.equipAll then
+        buttons.equipAll:ClearAllPoints()
+        buttons.equipAll:SetPoint("LEFT", frame, "LEFT", padding, 0)
+    end
+    if buttons.openSettings and buttons.equipAll then
+        buttons.openSettings:ClearAllPoints()
+        buttons.openSettings:SetPoint("LEFT", buttons.equipAll, "RIGHT", spacing, 0)
+    end
+    if buttons.vendor and buttons.openSettings then
+        buttons.vendor:ClearAllPoints()
+        buttons.vendor:SetPoint("LEFT", buttons.openSettings, "RIGHT", spacing, 0)
+    end
+    if buttons.toggleAutoEquip then
+        buttons.toggleAutoEquip:ClearAllPoints()
+        buttons.toggleAutoEquip:SetPoint("LEFT", frame, "LEFT", padding, 0)
+    end
+    if buttons.AHSetUpdate and buttons.toggleAutoEquip then
+        buttons.AHSetUpdate:ClearAllPoints()
+        buttons.AHSetUpdate:SetPoint("LEFT", buttons.toggleAutoEquip, "RIGHT", spacing, 0)
+    end
+    if buttons.sort and buttons.AHSetUpdate then
+        buttons.sort:ClearAllPoints()
+        buttons.sort:SetPoint("LEFT", buttons.AHSetUpdate, "RIGHT", spacing, 0)
+    end
+    if buttons.equipAHSet and buttons.sort then
+        buttons.equipAHSet:ClearAllPoints()
+        buttons.equipAHSet:SetPoint("LEFT", buttons.sort, "RIGHT", spacing, 0)
+    end
+end
+
+local function SetMiniFrameButtonCapacity(buttons, buttonCount)
+    local frame = AH.UI and AH.UI.miniFrame
+    if not frame then
+        return
+    end
+    local size = (buttons and buttons.equipAll and buttons.equipAll:GetHeight()) or 24
+    local spacing = 4
+    local padding = (frame:GetHeight() - size) / 2
+    local width = (padding * 2) + (size * buttonCount) + (spacing * math.max(buttonCount - 1, 0))
+    frame:SetWidth(width)
+end
+
+local function ApplyTwoButtonLayout(buttons, isMini, topKey, bottomKey)
+    if not buttons then
+        return
+    end
+
+    local topButton = buttons[topKey]
+    local bottomButton = buttons[bottomKey]
+
+    if isMini then
+        local frame = AH.UI and AH.UI.miniFrame
+        if not frame then
+            return
+        end
+        local size = (topButton and topButton:GetHeight()) or 24
+        local spacing = 4
+        local padding = (frame:GetHeight() - size) / 2
+
+        if topButton then
+            topButton:ClearAllPoints()
+            topButton:SetPoint("LEFT", frame, "LEFT", padding, 0)
+        end
+        if bottomButton and topButton then
+            bottomButton:ClearAllPoints()
+            bottomButton:SetPoint("LEFT", topButton, "RIGHT", size + (spacing * 2), 0)
+        end
+        return
+    end
+
+    local frame = AH.UI and AH.UI.mainFrame
+    if not frame then
+        return
+    end
+    if topButton then
+        topButton:ClearAllPoints()
+        topButton:SetPoint("TOP", frame, "TOP", 0, -5)
+    end
+    if bottomButton and topButton then
+        bottomButton:ClearAllPoints()
+        bottomButton:SetPoint("BOTTOM", topButton, "BOTTOM", 0, -54)
+    end
+end
+
+local function ApplyThreeButtonLayout(buttons, isMini, topKey, centerKey, bottomKey)
+    if not buttons then
+        return
+    end
+    local topButton = buttons[topKey]
+    local centerButton = buttons[centerKey]
+    local bottomButton = buttons[bottomKey]
+
+    if isMini then
+        local frame = AH.UI and AH.UI.miniFrame
+        if not frame then
+            return
+        end
+        local size = (topButton and topButton:GetHeight()) or 24
+        local spacing = 4
+        local padding = (frame:GetHeight() - size) / 2
+        if topButton then
+            topButton:ClearAllPoints()
+            topButton:SetPoint("LEFT", frame, "LEFT", padding, 0)
+        end
+        if centerButton and topButton and centerButton ~= topButton then
+            centerButton:ClearAllPoints()
+            centerButton:SetPoint("LEFT", topButton, "RIGHT", spacing, 0)
+        end
+        if bottomButton and centerButton and bottomButton ~= centerButton and bottomButton ~= topButton then
+            bottomButton:ClearAllPoints()
+            bottomButton:SetPoint("LEFT", centerButton, "RIGHT", spacing, 0)
+        end
+        return
+    end
+
+    local frame = AH.UI and AH.UI.mainFrame
+    if not frame then
+        return
+    end
+    if topButton then
+        topButton:ClearAllPoints()
+        topButton:SetPoint("TOP", frame, "TOP", 0, -5)
+    end
+    if centerButton and topButton and centerButton ~= topButton then
+        centerButton:ClearAllPoints()
+        centerButton:SetPoint("BOTTOM", topButton, "BOTTOM", 0, -27)
+    end
+    if bottomButton and centerButton and bottomButton ~= centerButton and bottomButton ~= topButton then
+        bottomButton:ClearAllPoints()
+        bottomButton:SetPoint("BOTTOM", centerButton, "BOTTOM", 0, -27)
+    end
+end
+
+local function UpdateButtonGroupVisibility(buttons, isMini)
+    if not buttons then
+        return
+    end
+
+    local shiftDown = IsShiftKeyDown()
+    local ctrlDown = IsControlKeyDown()
+    local hideCenterEnabled = AttuneHelperDB and AttuneHelperDB["Hide Center Button in Normal Mode"] == 1
+    local hideCenterInNormalMode = (not isMini) and hideCenterEnabled
+    local showEquipAHSet = IsEquipAHSetButtonEnabled()
+    local layoutPreset = GetButtonLayoutPreset()
+
+    local useCustomLayout = (layoutPreset == "Custom")
+    local useCustomTwoButtonLayout = (useCustomLayout and hideCenterEnabled)
+
+    if isMini then
+        SetMiniFrameButtonCapacity(buttons, 3)
+    end
+
+    if isMini then
+        ApplyMiniDefaultLayout(buttons)
+    else
+        ApplyMainDefaultLayout(buttons)
+    end
+
+    if useCustomLayout then
+        local stateKey = "Normal"
+        if ctrlDown and hideCenterEnabled then
+            stateKey = "Ctrl"
+        elseif shiftDown then
+            stateKey = "Shift"
+        end
+        local topKey, centerKey, bottomKey = GetCustomLayoutTrio(stateKey, showEquipAHSet)
+        for _, key in ipairs(allButtons) do
+            local btn = buttons[key]
+            if btn then
+                btn:Hide()
+            end
+        end
+        if useCustomTwoButtonLayout then
+            ApplyTwoButtonLayout(buttons, isMini, topKey, bottomKey)
+            if buttons[topKey] then
+                buttons[topKey]:Show()
+            end
+            if buttons[bottomKey] then
+                buttons[bottomKey]:Show()
+            end
+        else
+            ApplyThreeButtonLayout(buttons, isMini, topKey, centerKey, bottomKey)
+            if buttons[topKey] then
+                buttons[topKey]:Show()
+            end
+            if buttons[centerKey] then
+                buttons[centerKey]:Show()
+            end
+            if buttons[bottomKey] then
+                buttons[bottomKey]:Show()
+            end
+        end
+        return
+    end
+
+    if hideCenterInNormalMode then
+        local topKey, bottomKey
+        if ctrlDown then
+            topKey = "AHSetUpdate"
+            bottomKey = "openSettings"
+        elseif shiftDown then
+            topKey = "toggleAutoEquip"
+            bottomKey = showEquipAHSet and "equipAHSet" or "sort"
+        else
+            topKey = "equipAll"
+            bottomKey = "vendor"
+        end
+
+        ApplyTwoButtonLayout(buttons, isMini, topKey, bottomKey)
+        for _, key in ipairs(allButtons) do
+            local btn = buttons[key]
+            if btn then
+                btn:Hide()
+            end
+        end
+        if buttons[topKey] then
+            buttons[topKey]:Show()
+        end
+        if buttons[bottomKey] then
+            buttons[bottomKey]:Show()
+        end
+        return
+    end
+
+    local showOnShift, hideOnShift = BuildShiftVisibilityLists()
+
+    for _, key in ipairs(showOnShift) do
+        local btn = buttons[key]
+        if btn then
+            if shiftDown then btn:Show() else btn:Hide() end
+        end
+    end
+
+    for _, key in ipairs(hideOnShift) do
+        local btn = buttons[key]
+        if btn then
+            if not shiftDown then btn:Show() else btn:Hide() end
+        end
+    end
+
+    if buttons.equipAHSet and not showEquipAHSet then
+        buttons.equipAHSet:Hide()
+    end
+
+end
+
+function AH.UpdateModifierButtonVisibility()
+    if not AH or not AH.UI then
+        return
+    end
+
+    if AttuneHelperDB and AttuneHelperDB["Mini Mode"] == 1 then
+        UpdateButtonGroupVisibility(AH.UI.miniButtons, true)
+    else
+        UpdateButtonGroupVisibility(AH.UI.buttons, false)
+    end
+end
 
 local function AttachRightClickDrag(button)
     if not button then return end
+    if button.AHRightClickDragAttached then return end
 
     button:HookScript("OnMouseDown", function(s, mouseButton)
         AH.StartRightClickDragFromWidget(s, mouseButton)
@@ -13,6 +434,7 @@ local function AttachRightClickDrag(button)
     button:HookScript("OnMouseUp", function(_, mouseButton)
         AH.StopRightClickDrag(mouseButton)
     end)
+    button.AHRightClickDragAttached = true
 end
 
 ------------------------------------------------------------------------
@@ -33,7 +455,13 @@ function AH.CreateButton(name, parentFrame, text, relativeFrame, point, x, y, wi
         width = height * rw / rh * 1.5
     end
 
-    local b = CreateFrame("Button", name, parentFrame, "UIPanelButtonTemplate")
+    local b = _G[name]
+    if not b then
+        b = CreateFrame("Button", name, parentFrame, "UIPanelButtonTemplate")
+    elseif b:GetParent() ~= parentFrame then
+        b:SetParent(parentFrame)
+    end
+    b:ClearAllPoints()
     b:SetSize(width, height)
     b:SetScale(scale)
     b:SetPoint(point, relativeFrame, point, x, y)
@@ -64,6 +492,7 @@ function AH.CreateButton(name, parentFrame, text, relativeFrame, point, x, y, wi
 
     b:SetBackdropColor(0, 0, 0, 0.5)
     b:SetBackdropBorderColor(1, 1, 1, 1)
+    b:Show()
 
     AttachRightClickDrag(b)
 
@@ -74,7 +503,13 @@ end
 -- Mini icon button creation helper
 ------------------------------------------------------------------------
 function AH.CreateMiniIconButton(name, parent, iconPath, size, tooltipText)
-    local btn = CreateFrame("Button", name, parent)
+    local btn = _G[name]
+    if not btn then
+        btn = CreateFrame("Button", name, parent)
+    elseif btn:GetParent() ~= parent then
+        btn:SetParent(parent)
+    end
+    btn:ClearAllPoints()
     btn:SetSize(size, size)
     btn:SetNormalTexture(iconPath)
     btn:SetBackdrop({
@@ -84,7 +519,11 @@ function AH.CreateMiniIconButton(name, parent, iconPath, size, tooltipText)
     })
     btn:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.6)
 
-    local hl = btn:CreateTexture(nil, "HIGHLIGHT")
+    local hl = btn.AHHighlightTexture
+    if not hl then
+        hl = btn:CreateTexture(nil, "HIGHLIGHT")
+        btn.AHHighlightTexture = hl
+    end
     hl:SetAllPoints(btn)
     hl:SetTexture(iconPath)
     hl:SetBlendMode("ADD")
@@ -99,6 +538,8 @@ function AH.CreateMiniIconButton(name, parent, iconPath, size, tooltipText)
         AH.StopRightClickDrag(mouseButton)
     end)
 
+    btn:SetScript("OnEnter", nil)
+    btn:SetScript("OnLeave", nil)
     -- Only add simple tooltip for non-equip/non-vendor buttons initially
     if tooltipText and name ~= "AttuneHelperMiniEquipButton" and name ~= "AttuneHelperMiniVendorButton" then
         btn:SetScript("OnEnter", function(s)
@@ -108,6 +549,7 @@ function AH.CreateMiniIconButton(name, parent, iconPath, size, tooltipText)
         end)
         btn:SetScript("OnLeave", GameTooltip_Hide)
     end
+    btn:Show()
 
     return btn
 end
@@ -191,6 +633,16 @@ function AH.CreateMainButtons()
         nil, nil, nil, 1.3
     )
 
+    local equipAHSetButton = AH.CreateButton(
+        "AttuneHelperEquipAHSetButton",
+        mainFrame,
+        "Equip AHSet",
+        sortButton,
+        "BOTTOM",
+        0, -27,
+        nil, nil, nil, 1.3
+    )
+
     -- Store references
     AH.UI.buttons = AH.UI.buttons or {}
     AH.UI.buttons.equipAll = equipButton
@@ -199,6 +651,7 @@ function AH.CreateMainButtons()
     AH.UI.buttons.toggleAutoEquip = toggleAutoEquipButton
     AH.UI.buttons.openSettings = openSettingsButton
     AH.UI.buttons.sort = sortButton
+    AH.UI.buttons.equipAHSet = equipAHSetButton
 
     -- Export for legacy compatibility
     _G.EquipAllButton = equipButton
@@ -207,23 +660,15 @@ function AH.CreateMainButtons()
     _G.ToggleAutoEquipButton = toggleAutoEquipButton
     _G.SettingsButton = openSettingsButton
     _G.SortInventoryButton = sortButton
+    _G.EquipAHSetButton = equipAHSetButton
 
     -- Set up button click handlers
     AH.SetupMainButtonHandlers()
     -- Apply initial button theme
     AH.ApplyButtonTheme(AttuneHelperDB["Button Theme"])
     -- Immediately update visibility after button creation
-    if AH.UI.buttons then
-        local shiftDown = IsShiftKeyDown()
-        local buttons = AH.UI.buttons
-        for _, key in ipairs(showOnShift) do
-            local btn = buttons[key]
-            if btn then if shiftDown then btn:Show() else btn:Hide() end else print("button not found") end
-        end
-        for _, key in ipairs(hideOnShift) do
-            local btn = buttons[key]
-            if btn then if not (shiftDown) then btn:Show() else btn:Hide() end else print("button not found") end
-        end
+    if AH.UpdateModifierButtonVisibility then
+        AH.UpdateModifierButtonVisibility()
     end
 end
 
@@ -300,6 +745,15 @@ function AH.CreateMiniButtons()
     )
     sortButton:SetPoint("LEFT", AHSetUpdateButton, "RIGHT", mS, 0)
 
+    local equipAHSetButton = AH.CreateMiniIconButton(
+        "AttuneHelperMiniEquipAHSetButton",
+        frame,
+        "Interface\\Addons\\AttuneHelper\\assets\\icon_equip_ahset.blp",
+        mBS,
+        "Equip AHSet"
+    )
+    equipAHSetButton:SetPoint("LEFT", sortButton, "RIGHT", mS, 0)
+
     -- Store references
     AH.UI.miniButtons = AH.UI.miniButtons or {}
     AH.UI.miniButtons.equipAll = equipButton
@@ -308,6 +762,7 @@ function AH.CreateMiniButtons()
     AH.UI.miniButtons.toggleAutoEquip = toggleAutoEquipButton
     AH.UI.miniButtons.openSettings = openSettingsButton
     AH.UI.miniButtons.sort = sortButton
+    AH.UI.miniButtons.equipAHSet = equipAHSetButton
 
     -- Export for legacy compatibility
     _G.AttuneHelperMiniEquipButton = equipButton
@@ -316,19 +771,11 @@ function AH.CreateMiniButtons()
     _G.AttuneHelperMiniToggleAutoEquipButton = toggleAutoEquipButton
     _G.AttuneHelperMiniOpenSettingsButton = openSettingsButton
     _G.AttuneHelperMiniSortButton = sortButton
+    _G.AttuneHelperMiniEquipAHSetButton = equipAHSetButton
 
     -- Immediately update visibility after button creation
-    if AH.UI.miniButtons then
-        local shiftDown = IsShiftKeyDown()
-        local buttons = AH.UI.miniButtons
-        for _, key in ipairs(showOnShift) do
-            local btn = buttons[key]
-            if btn then if shiftDown then btn:Show() else btn:Hide() end else print("button not found") end
-        end
-        for _, key in ipairs(hideOnShift) do
-            local btn = buttons[key]
-            if btn then if not (shiftDown) then btn:Show() else btn:Hide() end else print("button not found") end
-        end
+    if AH.UpdateModifierButtonVisibility then
+        AH.UpdateModifierButtonVisibility()
     end
 end
 
@@ -337,7 +784,7 @@ end
 ------------------------------------------------------------------------
 function AH.SetupMainButtonHandlers()
     if not AH.UI.buttons.equipAll then
-        AH.print_debug_general("SetupMainButtonHandlers: equipAll button not found")
+        --AH.print_debug_general("SetupMainButtonHandlers: equipAll button not found")
         return
     end
 
@@ -345,6 +792,11 @@ function AH.SetupMainButtonHandlers()
     -- ʕ •ᴥ•ʔ✿ Equip All Button - uses comprehensive equip logic ✿ ʕ •ᴥ•ʔ
     AH.UI.buttons.equipAll:SetScript("OnClick", function()
         AH.EquipAllAttunables()
+    end)
+    AH.UI.buttons.equipAll:SetScript("OnReceiveDrag", function()
+        if AH.AddCursorItemToAHSet then
+            AH.AddCursorItemToAHSet()
+        end
     end)
 
     -- Equip All Button tooltip
@@ -355,7 +807,15 @@ function AH.SetupMainButtonHandlers()
         -- Add detailed list with icons
         local attunableData = AH.GetAttunableItemNamesList()
         local count = #attunableData
-        GameTooltip:AddLine(string.format(AH.t("Attunable Items: %d"), count), 1, 1, 0)
+        local counts = AH.GetBagAttunableTooltipCounts and AH.GetBagAttunableTooltipCounts() or {}
+        local isPrestiged = counts.prestiged == true
+        local accountCount = counts.accountAttunableInBag or 0
+
+        local attunableLine = string.format(AH.t("Attunable Items: %d"), count)
+        if isPrestiged and accountCount > 0 then
+            attunableLine = attunableLine .. string.format(" (%d)", accountCount)
+        end
+        GameTooltip:AddLine(attunableLine, 1, 1, 0)
 
         if count > 0 then
             GameTooltip:AddLine(" ") -- Empty line for spacing
@@ -404,7 +864,10 @@ function AH.SetupMainButtonHandlers()
             end
         end
 
+
+
         GameTooltip:AddLine(" ") -- Empty line for spacing
+        GameTooltip:AddLine(AH.t("Drag an item here to assign its slot in AHSet."), 0.6, 0.9, 1, true)
         GameTooltip:AddLine(AH.t("Hold Shift for additional options"), 0.7, 0.9, 1, true)
         GameTooltip:Show()
     end)
@@ -447,11 +910,19 @@ function AH.SetupMainButtonHandlers()
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(AH.t("Vendor Attuned Items"))
         local itemsToVendor = AH.GetQualifyingVendorItems and AH.GetQualifyingVendorItems() or {}
+        local showAllItems = IsShiftKeyDown()
+        local previewLimit = 12
+        local itemsToShow = showAllItems and #itemsToVendor or math.min(#itemsToVendor, previewLimit)
 
         if #itemsToVendor > 0 then
             GameTooltip:AddLine(string.format(AH.t("Items to be sold (%d):"), #itemsToVendor), 1, 1, 0) -- Yellow
-            for _, itemData in ipairs(itemsToVendor) do
+            for i = 1, itemsToShow do
+                local itemData = itemsToVendor[i]
                 local _, _, itemQuality, _, _, _, _, _, _, itemTexture = GetItemInfo(itemData.link)
+                if (not itemTexture) and itemData.bag and itemData.slot then
+                    local _, _, _, _, _, _, _, _, _, containerTexture = GetContainerItemInfo(itemData.bag, itemData.slot)
+                    itemTexture = containerTexture
+                end
                 local iconText = ""
                 if itemTexture then
                     iconText = string.format("|T%s:16:16:0:0:64:64:4:60:4:60|t ", itemTexture)
@@ -460,6 +931,10 @@ function AH.SetupMainButtonHandlers()
                 local r, g, b = 0.8, 0.8, 0.8
                 if qualityColor then r, g, b = qualityColor.r, qualityColor.g, qualityColor.b end
                 GameTooltip:AddLine(iconText .. itemData.name, r, g, b, true)
+            end
+            if not showAllItems and #itemsToVendor > itemsToShow then
+                local remainingItems = #itemsToVendor - itemsToShow
+                GameTooltip:AddLine(string.format(AH.t("...and %d more items (hold Shift to show all)."), remainingItems), 0.75, 0.75, 0.75, true)
             end
         else
             GameTooltip:AddLine(AH.t("No items will be sold based on current settings."), 0.8, 0.8, 0.8, true)
@@ -539,7 +1014,20 @@ function AH.SetupMainButtonHandlers()
         GameTooltip:Hide()
     end)
 
-    AH.print_debug_general("Main button handlers set up successfully")
+    AH.UI.buttons.equipAHSet:SetScript("OnClick", function()
+        AH.EquipAHSetOnly()
+    end)
+    AH.UI.buttons.equipAHSet:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(AH.t("Equip AHSet"))
+        GameTooltip:AddLine(AH.t("Equips your AHSet items without checking attunables."), 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    AH.UI.buttons.equipAHSet:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+
+    --AH.print_debug_general("Main button handlers set up successfully")
 end
 
 ------------------------------------------------------------------------
@@ -556,6 +1044,13 @@ function AH.SetupMiniButtonHandlers()
                     _G.EquipAllButton:GetScript("OnClick")()
                 end
             end)
+            AH.UI.miniButtons.equipAll:SetScript("OnReceiveDrag", function()
+                if _G.EquipAllButton and _G.EquipAllButton:GetScript("OnReceiveDrag") then
+                    _G.EquipAllButton:GetScript("OnReceiveDrag")()
+                elseif AH.AddCursorItemToAHSet then
+                    AH.AddCursorItemToAHSet()
+                end
+            end)
 
             -- Setup detailed tooltip for mini equip button
             AH.UI.miniButtons.equipAll:SetScript("OnEnter", function(s)
@@ -564,9 +1059,18 @@ function AH.SetupMiniButtonHandlers()
 
                 local attunableData = AH.GetAttunableItemNamesList()
                 local count = #attunableData
+                local counts = AH.GetBagAttunableTooltipCounts and AH.GetBagAttunableTooltipCounts() or {}
+                local isPrestiged = counts.prestiged == true
+                local accountCount = counts.accountAttunableInBag or 0
+
+                local attunableLine = string.format(AH.t("Attunable Items: %d"), count)
+                if isPrestiged and accountCount > 0 then
+                    attunableLine = attunableLine .. string.format(" (%d)", accountCount)
+                end
+                GameTooltip:AddLine(attunableLine, 1, 1, 0)
 
                 if count > 0 then
-                    GameTooltip:AddLine(string.format(AH.t("Qualifying Attunables (%d):"), count), 1, 1, 0) -- Yellow text
+                    GameTooltip:AddLine(" ") -- Empty line for spacing
                     for _, itemData in ipairs(attunableData) do
                         -- Get item info including quality and texture
                         local _, itemLinkFull, itemQuality, _, _, _, _, _, _, itemTexture = GetItemInfo(itemData.link)
@@ -616,6 +1120,7 @@ function AH.SetupMiniButtonHandlers()
                 end
 
                 GameTooltip:AddLine(" ") -- Empty line for spacing
+                GameTooltip:AddLine(AH.t("Drag an item here to assign its slot in AHSet."), 0.6, 0.9, 1, true)
                 GameTooltip:AddLine(AH.t("Hold Shift for additional options"), 0.7, 0.9, 1, true)
                 GameTooltip:Show()
             end)
@@ -758,6 +1263,21 @@ function AH.SetupMiniButtonHandlers()
             end)
             AH.UI.miniButtons.sort:SetScript("OnLeave", GameTooltip_Hide)
         end
+
+        if AH.UI.miniButtons and AH.UI.miniButtons.equipAHSet and _G.EquipAHSetButton then
+            AH.UI.miniButtons.equipAHSet:SetScript("OnClick", function()
+                if _G.EquipAHSetButton:GetScript("OnClick") then
+                    _G.EquipAHSetButton:GetScript("OnClick")()
+                end
+            end)
+            AH.UI.miniButtons.equipAHSet:SetScript("OnEnter", function(s)
+                GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+                GameTooltip:SetText(AH.t("Equip AHSet"))
+                GameTooltip:AddLine(AH.t("Equips your AHSet items without checking attunables."), 1, 1, 1, true)
+                GameTooltip:Show()
+            end)
+            AH.UI.miniButtons.equipAHSet:SetScript("OnLeave", GameTooltip_Hide)
+        end
     end)
 end
 
@@ -768,33 +1288,9 @@ end
 local shiftWatcher = CreateFrame("Frame", "AttuneHelperShiftWatcher", UIParent)
 shiftWatcher:RegisterEvent("MODIFIER_STATE_CHANGED")
 shiftWatcher:SetScript("OnEvent", function(_, event, key, state)
-    if key == "LSHIFT" or key == "RSHIFT" then
-        if AH and AH.UI then
-            -- Toggle visibility
-            local shiftDown = IsShiftKeyDown()
-            local buttons
-            if AttuneHelperDB["Mini Mode"] == 0 then
-                buttons = AH.UI.buttons
-            elseif AttuneHelperDB["Mini Mode"] == 1 then
-                buttons = AH.UI.miniButtons
-            end
-
-            for _, key in ipairs(showOnShift) do
-                local btn = buttons[key]
-                if btn then
-                    if shiftDown then btn:Show() else btn:Hide() end
-                else
-                    AH.print_debug_general("button not found")
-                end
-            end
-            for _, key in ipairs(hideOnShift) do
-                local btn = buttons[key]
-                if btn then
-                    if not (shiftDown) then btn:Show() else btn:Hide() end
-                else
-                    AH.print_debug_general("button not found")
-                end
-            end
+    if key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL" then
+        if AH and AH.UpdateModifierButtonVisibility then
+            AH.UpdateModifierButtonVisibility()
         end
     end
 end)
@@ -814,12 +1310,8 @@ function AH.ReCreateButtons()
 end
 
 function AH.DeleteButtons()
-    buttons = AH.UI.buttons
-    for _, key in ipairs(showOnShift) do
-        local btn = buttons[key]
-        if btn then btn:Hide() else AH.print_debug_general("button not found") end
-    end
-    for _, key in ipairs(hideOnShift) do
+    local buttons = AH.UI.buttons
+    for _, key in ipairs(allButtons) do
         local btn = buttons[key]
         if btn then btn:Hide() else AH.print_debug_general("button not found") end
     end

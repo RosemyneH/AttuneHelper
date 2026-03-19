@@ -5,14 +5,18 @@ local AH = _G.AttuneHelper
 AH.blacklist_checkboxes = {}
 AH.general_option_checkboxes = {}
 AH.theme_option_controls = {}
+AH.button_layout_option_controls = {}
 AH.forge_type_checkboxes = {}
+AH.forge_option_controls = {}
 AH.weapon_control_checkboxes = {}
 
 -- Export for legacy compatibility
 _G.blacklist_checkboxes = AH.blacklist_checkboxes
 _G.general_option_checkboxes = AH.general_option_checkboxes
 _G.theme_option_controls = AH.theme_option_controls
+_G.button_layout_option_controls = AH.button_layout_option_controls
 _G.forge_type_checkboxes = AH.forge_type_checkboxes
+_G.forge_option_controls = AH.forge_option_controls
 _G.weapon_control_checkboxes = AH.weapon_control_checkboxes
 
 ------------------------------------------------------------------------
@@ -32,10 +36,12 @@ AH.general_options_list_for_checkboxes = {
     {text = "Limit Selling to 12 Items?", dbKey = "Limit Selling to 12 Items?"},
     {text = "Disable Auto-Equip Mythic BoE", dbKey = "Disable Auto-Equip Mythic BoE"},
     {text = "Equip BoE Bountied Items", dbKey = "Equip BoE Bountied Items"},
-    {text = "Equip New Affixes Only", dbKey = "EquipNewAffixesOnly"},
+    {text = "Equip Attunable Affixes up to:", dbKey = "EquipNewAffixesOnly"},
     {text = "Prioritize Low iLvl for Auto-Equip", dbKey = "Prioritize Low iLvl for Auto-Equip"},
     {text = "Enable Vendor Sell Confirmation Dialog", dbKey = "EnableVendorSellConfirmationDialog"},
+    {text = "Vendor preview on Right (Default On)", dbKey = "Vendor preview on Right (Default On)"},
     {text = "Draggable by Right Click", dbKey = "Draggable by Right Click"},
+    {text = "Lock AH in Place (Buttons Only Mouse)", dbKey = "Lock AH in Place (Buttons Only Mouse)"},
     {text = "Use Bag 1 for Disenchant", dbKey = "Use Bag 1 for Disenchant"}
 }
 
@@ -47,6 +53,16 @@ AH.weapon_options_list_for_checkboxes = {
     {text = "Allow OffHand 2H Weapons", dbKey = "Allow OffHand 2H Weapons"},
     {text = "Allow OffHand Shields", dbKey = "Allow OffHand Shields"},
     {text = "Allow OffHand Holdables", dbKey = "Allow OffHand Holdables"}
+}
+
+AH.button_layout_button_choices = {
+    { key = "equipAll",       label = "Equip Attunables" },
+    { key = "vendor",         label = "Vendor Attuned" },
+    { key = "openSettings",   label = "Open Settings" },
+    { key = "toggleAutoEquip", label = "Toggle Auto-Equip" },
+    { key = "AHSetUpdate",    label = "Update AHSet" },
+    { key = "sort",           label = "Prepare Disenchant" },
+    { key = "equipAHSet",     label = "Equip AHSet" }
 }
 
 -- Export for legacy compatibility
@@ -109,6 +125,53 @@ function AH.ApplyGeneralOptionTooltip(cb, dbKey)
             GameTooltip:Show()
         end)
         cb:SetScript("OnLeave", GameTooltip_Hide)
+    elseif dbKey == "EquipNewAffixesOnly" then
+        cb:SetScript("OnEnter", function(s)
+            GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+            GameTooltip:SetText(AH.t("Equip Attunable Affixes up to:"))
+            GameTooltip:AddLine(
+                AH.t("Quick rules:"),
+                1, 0.82, 0.2, true
+            )
+            GameTooltip:AddLine(
+                AH.t("- Below selected tier: lenient."),
+                0.85, 0.85, 0.85, true
+            )
+            GameTooltip:AddLine(
+                AH.t("- Selected tier and up: unattuned variant only."),
+                0.85, 0.85, 0.85, true
+            )
+            GameTooltip:AddLine(
+                AH.t("- Existing variant: only higher tier can equip."),
+                0.85, 0.85, 0.85, true
+            )
+            GameTooltip:AddLine(
+                AH.t("- Does not check extra affix unlocks."),
+                0.85, 0.85, 0.85, true
+            )
+            GameTooltip:AddLine(
+                " ",
+                1, 1, 1, true
+            )
+            GameTooltip:AddLine(
+                AH.t("Example (Warforged):"),
+                1, 0.82, 0.2, true
+            )
+            GameTooltip:AddLine(
+                AH.t("- Base and TF - Equips all if Affix is attunable."),
+                0.85, 0.85, 0.85, true
+            )
+            GameTooltip:AddLine(
+                AH.t("- Warforged duplicate: blocked. (Max 1)"),
+                0.85, 0.85, 0.85, true
+            )
+            GameTooltip:AddLine(
+                AH.t("- Lightforged: can still equip. (Max 1)"),
+                0.85, 0.85, 0.85, true
+            )
+            GameTooltip:Show()
+        end)
+        cb:SetScript("OnLeave", GameTooltip_Hide)
     end
 end
 
@@ -138,7 +201,7 @@ function AH.SaveAllSettings()
     -- ʕ •ᴥ•ʔ✿ Save weapon control checkboxes ✿ ʕ •ᴥ•ʔ
     for _, cb in ipairs(AH.weapon_control_checkboxes) do
         if cb and cb:IsShown() then
-            AttuneHelperDB[cb.dbKey or cb:GetName()] = cb:GetChecked() and 1 or 0
+            AH.SetWeaponControlSetting(cb.dbKey or cb:GetName(), cb:GetChecked() and 1 or 0)
         end
     end
     
@@ -219,6 +282,23 @@ function AH.LoadAllSettings()
     end
     AH.ApplyButtonTheme(th)
 
+    local layoutPreset = AttuneHelperDB["Button Layout Preset"] or "Standard"
+    if layoutPreset == "Compact" then
+        layoutPreset = "Standard"
+        AttuneHelperDB["Button Layout Preset"] = "Standard"
+    end
+    local ddLayoutPreset = _G["AttuneHelperButtonLayoutDropdown"]
+    if ddLayoutPreset then
+        UIDropDownMenu_SetSelectedValue(ddLayoutPreset, layoutPreset)
+        UIDropDownMenu_SetText(ddLayoutPreset, layoutPreset)
+    end
+    if AH.RefreshButtonLayoutOptionVisibility then
+        AH.RefreshButtonLayoutOptionVisibility()
+    end
+    if AH.RefreshButtonLayoutEditor then
+        AH.RefreshButtonLayoutEditor()
+    end
+
     -- Load color swatch
     local bgcT = AttuneHelperDB["Background Color"]
     local csf = _G["AttuneHelperBgColorSwatch"]
@@ -241,9 +321,28 @@ function AH.LoadAllSettings()
         cb:SetChecked(AttuneHelperDB[cb.dbKey or cb:GetName()] == 1)
     end
 
+    -- Load forge affix threshold dropdown
+    local affixDD = AH.forge_option_controls and AH.forge_option_controls.affixMinForgeDropdown
+    if affixDD then
+        local value = AttuneHelperDB["AffixOnlyMinForgeLevel"]
+        if type(value) ~= "number" then
+            value = AH.FORGE_LEVEL_MAP.WARFORGED
+        end
+
+        local labelMap = {
+            [-1] = "All Items",
+            [AH.FORGE_LEVEL_MAP.TITANFORGED] = "Titanforged",
+            [AH.FORGE_LEVEL_MAP.WARFORGED] = "Warforged",
+            [AH.FORGE_LEVEL_MAP.LIGHTFORGED] = "Lightforged"
+        }
+
+        UIDropDownMenu_SetSelectedValue(affixDD, value)
+        UIDropDownMenu_SetText(affixDD, labelMap[value] or "Warforged")
+    end
+
     -- ʕ •ᴥ•ʔ✿ Load weapon control checkbox states ✿ ʕ •ᴥ•ʔ
     for _, cb in ipairs(AH.weapon_control_checkboxes) do
-        cb:SetChecked(AttuneHelperDB[cb.dbKey or cb:GetName()] == 1)
+        cb:SetChecked(AH.GetWeaponControlSetting(cb.dbKey or cb:GetName()) == 1)
     end
 
     -- Load language dropdown selection
@@ -293,7 +392,7 @@ function AH.SaveSettingsForced()
     -- ʕ •ᴥ•ʔ✿ Save weapon control checkboxes ✿ ʕ •ᴥ•ʔ
     for _, cb in ipairs(AH.weapon_control_checkboxes) do
         if cb and cb:IsShown() then
-            AttuneHelperDB[cb.dbKey or cb:GetName()] = cb:GetChecked() and 1 or 0
+            AH.SetWeaponControlSetting(cb.dbKey or cb:GetName(), cb:GetChecked() and 1 or 0)
         end
     end
     
@@ -498,6 +597,13 @@ function AH.InitializeOptionCheckboxes()
                     AH.UpdateItemCountText()
                 end
             end)
+        elseif oD.dbKey == "Lock AH in Place (Buttons Only Mouse)" then
+            cb:SetScript("OnClick", function()
+                AH.SaveAllSettings()
+                if AH.ApplyFrameInteractivity then
+                    AH.ApplyFrameInteractivity()
+                end
+            end)
         else
             cb:SetScript("OnClick", AH.SaveAllSettings)
         end
@@ -531,6 +637,17 @@ function AH.InitializeForgeOptionCheckboxes()
         
         table.insert(AH.forge_type_checkboxes, cb)
     end
+
+    local disableBoe284Cb = AH.CreateCheckbox(
+        "Disable Auto Equip on 284 BoE Forges if Base Attuned",
+        forgePanel,
+        16,
+        -220,
+        true,
+        "Disable Auto Equip 284 BoE Forges if Base Attuned"
+    )
+    disableBoe284Cb:SetScript("OnClick", AH.SaveSettingsForced)
+    table.insert(AH.general_option_checkboxes, disableBoe284Cb)
 end
 
 ------------------------------------------------------------------------
@@ -541,7 +658,7 @@ function AH.InitializeThemeOptions()
     local yOffset = -60
     local themePanel = AH.UI.panels.theme
     if not themePanel then
-        AH.print_debug_general("Theme panel not found for init!")
+        --AH.print_debug_general("Theme panel not found for init!")
         return
     end
 
@@ -599,7 +716,7 @@ function AH.InitializeThemeOptions()
     
     sw:SetScript("OnEnter", function(s)
         GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Background Color")
+        GameTooltip:SetText(AH.t("Background Color"))
         GameTooltip:Show()
     end)
     sw:SetScript("OnLeave", GameTooltip_Hide)
@@ -732,10 +849,8 @@ function AH.InitializeThemeOptions()
     lastAnchor = btDD
     yOffset = yOffset - 30
 
-    -- Mini Mode Checkbox
     local miniModeCheckbox = AH.CreateCheckbox("Mini Mode", themePanel, 16, yOffset - 5, true, "Mini Mode")
-    miniModeCheckbox:SetPoint("TOPLEFT", _G["AttuneHelperButtonThemeDropdown"], "BOTTOMLEFT", 0, -15)
-
+    miniModeCheckbox:SetPoint("TOPLEFT", btDD, "BOTTOMLEFT", 16, -10)
     miniModeCheckbox:SetScript("OnClick", function(self)
         AttuneHelperDB["Mini Mode"] = self:GetChecked() and 1 or 0
         AH.SaveAllSettings()
@@ -743,13 +858,13 @@ function AH.InitializeThemeOptions()
             AH.UpdateDisplayMode()
         end
     end)
-    
     table.insert(AH.general_option_checkboxes, miniModeCheckbox)
     AH.theme_option_controls.miniModeCheckbox = miniModeCheckbox
+    yOffset = yOffset - 33
 
     -- ʕ •ᴥ•ʔ✿ Language Selection (Theme Panel) ✿ ʕ •ᴥ•ʔ
     local langLabelT = themePanel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    langLabelT:SetPoint("TOPLEFT",  miniModeCheckbox, "BOTTOMLEFT", 0, -20)
+    langLabelT:SetPoint("TOPLEFT", miniModeCheckbox, "BOTTOMLEFT", 0, -20)
     langLabelT:SetText(AH.t("Select Language:"))
 
     local langDDT = CreateFrame("Frame", "AttuneHelperLanguageDropdownTheme", themePanel, "UIDropDownMenuTemplate")
@@ -853,10 +968,76 @@ function AH.CreateGeneralOptionsPanel(mainPanel)
         
         -- ʕ •ᴥ•ʔ✿ Add click handlers for general option checkboxes ✿ ʕ •ᴥ•ʔ
         if opt.dbKey == "EquipNewAffixesOnly" then
+            AH.forge_option_controls = AH.forge_option_controls or {}
+
+            local affixDD = CreateFrame("Frame", "AttuneHelperAffixMinForgeDropdown", generalOptionsPanel, "UIDropDownMenuTemplate")
+            affixDD:SetPoint("LEFT", cb, "RIGHT", 180, -1)
+            UIDropDownMenu_SetWidth(affixDD, 140)
+            AH.forge_option_controls.affixMinForgeDropdown = affixDD
+
+            UIDropDownMenu_Initialize(affixDD, function()
+                local options = {
+                    { text = "All Items", value = -1 },
+                    { text = "Titanforged", value = AH.FORGE_LEVEL_MAP.TITANFORGED },
+                    { text = "Warforged", value = AH.FORGE_LEVEL_MAP.WARFORGED },
+                    { text = "Lightforged", value = AH.FORGE_LEVEL_MAP.LIGHTFORGED },
+                }
+
+                for _, optData in ipairs(options) do
+                    local optText = optData.text
+                    local optValue = optData.value
+                    local info = UIDropDownMenu_CreateInfo()
+                    info.text = optText
+                    info.value = optValue
+                    info.func = function(btn)
+                        UIDropDownMenu_SetSelectedValue(affixDD, btn.value)
+                        UIDropDownMenu_SetText(affixDD, optText)
+                        AttuneHelperDB["AffixOnlyMinForgeLevel"] = btn.value
+                        AH.SaveSettingsForced()
+                        if AH.UpdateItemCountText then
+                            AH.UpdateItemCountText()
+                        end
+                    end
+                    info.checked = (AttuneHelperDB["AffixOnlyMinForgeLevel"] == optValue)
+                    UIDropDownMenu_AddButton(info)
+                end
+            end)
+
+            local function ShowAffixDropdownTooltip(owner)
+                GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+                GameTooltip:SetText(AH.t("Equip Attunable Affixes up to:"))
+                GameTooltip:AddLine(AH.t("Quick rules:"), 1, 0.82, 0.2, true)
+                GameTooltip:AddLine(AH.t("- Below selected tier: lenient."), 0.85, 0.85, 0.85, true)
+                GameTooltip:AddLine(AH.t("- Selected tier and up: unattuned variant only."), 0.85, 0.85, 0.85, true)
+                GameTooltip:AddLine(AH.t("- Does not check extra affix unlocks."), 0.85, 0.85, 0.85, true)
+                GameTooltip:AddLine(AH.t("- 'All Items': strict at all tiers."), 0.85, 0.85, 0.85, true)
+                GameTooltip:Show()
+            end
+
+            affixDD:SetScript("OnEnter", function(s)
+                ShowAffixDropdownTooltip(s)
+            end)
+            affixDD:SetScript("OnLeave", GameTooltip_Hide)
+
+            local affixDDButton = _G[affixDD:GetName() .. "Button"]
+            if affixDDButton then
+                affixDDButton:SetScript("OnEnter", function(s)
+                    ShowAffixDropdownTooltip(s)
+                end)
+                affixDDButton:SetScript("OnLeave", GameTooltip_Hide)
+            end
+
             cb:SetScript("OnClick", function(s)
                 AH.SaveSettingsForced()
                 if AH.UpdateItemCountText then
                     AH.UpdateItemCountText()
+                end
+            end)
+        elseif opt.dbKey == "Lock AH in Place (Buttons Only Mouse)" then
+            cb:SetScript("OnClick", function()
+                AH.SaveSettingsForced()
+                if AH.ApplyFrameInteractivity then
+                    AH.ApplyFrameInteractivity()
                 end
             end)
         else
@@ -935,6 +1116,361 @@ function AH.CreateThemeOptionsPanel(mainPanel)
 end
 
 ------------------------------------------------------------------------
+-- Create button layout options panel
+------------------------------------------------------------------------
+function AH.CreateButtonLayoutOptionsPanel(mainPanel)
+    local buttonLayoutPanel = CreateFrame("Frame", "AttuneHelperButtonLayoutOptionsPanel", mainPanel)
+    buttonLayoutPanel.name = "Button Layout"
+    buttonLayoutPanel.parent = mainPanel.name
+    InterfaceOptions_AddCategory(buttonLayoutPanel)
+
+    AH.UI.panels = AH.UI.panels or {}
+    AH.UI.panels.buttonLayout = buttonLayoutPanel
+
+    local title = buttonLayoutPanel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", 16, -16)
+    title:SetText("Button Layout")
+
+    local subtitle = buttonLayoutPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
+    subtitle:SetText("Configure which action buttons appear for Normal, Shift, and Ctrl views.")
+
+    AH.button_layout_option_controls = {}
+
+    local modeLabel = buttonLayoutPanel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    modeLabel:SetPoint("TOPLEFT", 16, -60)
+    modeLabel:SetText("Layout Mode:")
+
+    local modeDD = CreateFrame("Frame", "AttuneHelperButtonLayoutDropdown", buttonLayoutPanel, "UIDropDownMenuTemplate")
+    modeDD:SetPoint("TOPLEFT", modeLabel, "BOTTOMLEFT", -16, -8)
+    UIDropDownMenu_SetWidth(modeDD, 180)
+    AH.button_layout_option_controls.layoutModeDropdown = modeDD
+
+    UIDropDownMenu_Initialize(modeDD, function()
+        for _, preset in ipairs({ "Standard", "Custom" }) do
+            local info = UIDropDownMenu_CreateInfo()
+            info.text = preset
+            info.value = preset
+            info.func = function(btn)
+                UIDropDownMenu_SetSelectedValue(modeDD, btn.value)
+                UIDropDownMenu_SetText(modeDD, btn.value)
+                AttuneHelperDB["Button Layout Preset"] = btn.value
+                AH.SaveAllSettings()
+                if AH.RefreshButtonLayoutOptionVisibility then
+                    AH.RefreshButtonLayoutOptionVisibility()
+                end
+                if AH.RefreshButtonLayoutEditor then
+                    AH.RefreshButtonLayoutEditor()
+                end
+                if AH.UpdateModifierButtonVisibility then
+                    AH.UpdateModifierButtonVisibility()
+                end
+            end
+            info.checked = (preset == (AttuneHelperDB["Button Layout Preset"] or "Standard"))
+            UIDropDownMenu_AddButton(info)
+        end
+    end)
+
+    local hideCenterCheckbox = AH.CreateCheckbox(
+        "Hide Center Button in Normal Mode",
+        buttonLayoutPanel,
+        16,
+        -118,
+        true,
+        "Hide Center Button in Normal Mode"
+    )
+    hideCenterCheckbox:SetScript("OnClick", function()
+        AH.SaveAllSettings()
+        if AH.RefreshButtonLayoutEditor then
+            AH.RefreshButtonLayoutEditor()
+        end
+        if AH.UpdateModifierButtonVisibility then
+            AH.UpdateModifierButtonVisibility()
+        end
+    end)
+    hideCenterCheckbox:SetScript("OnEnter", function(s)
+        GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+        GameTooltip:SetText(AH.t("Hide Center Button in Normal Mode"))
+        GameTooltip:AddLine(AH.t("Hides the center action button in normal view."), 1, 1, 1, true)
+        GameTooltip:AddLine(AH.t("Hold Ctrl to show Open Settings and Update AHSet."), 0.75, 0.9, 1, true)
+        GameTooltip:Show()
+    end)
+    hideCenterCheckbox:SetScript("OnLeave", GameTooltip_Hide)
+    table.insert(AH.general_option_checkboxes, hideCenterCheckbox)
+    AH.button_layout_option_controls.hideCenterButtonCheckbox = hideCenterCheckbox
+
+    local visualHeader = buttonLayoutPanel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    visualHeader:SetPoint("TOPLEFT", 16, -152)
+    visualHeader:SetText("Custom Modifier Layout")
+    AH.button_layout_option_controls.visualHeader = visualHeader
+
+    local modifierLabel = buttonLayoutPanel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    modifierLabel:SetPoint("TOPLEFT", visualHeader, "BOTTOMLEFT", 0, -10)
+    modifierLabel:SetText("Modifier View:")
+    AH.button_layout_option_controls.modifierLabel = modifierLabel
+
+    local activeModifier = "Normal"
+    local modifierButtons = {}
+    local actionButtons = {}
+    local actionTitles = {}
+    local actionTexts = {}
+
+    local function GetLayoutDbKey(modifierName, slotType)
+        return "Layout " .. modifierName .. " " .. slotType
+    end
+
+    local function GetChoicePool()
+        local list = {}
+        for _, choice in ipairs(AH.button_layout_button_choices or {}) do
+            table.insert(list, choice)
+        end
+        return list
+    end
+
+    local iconMap = {
+        equipAll = "Interface\\Addons\\AttuneHelper\\assets\\icon_equip_attunables.blp",
+        vendor = "Interface\\Addons\\AttuneHelper\\assets\\icon_vendor-attuned.blp",
+        openSettings = "Interface\\Addons\\AttuneHelper\\assets\\icon_settings.blp",
+        toggleAutoEquip = "Interface\\Addons\\AttuneHelper\\assets\\icon_auto_equip_off.blp",
+        AHSetUpdate = "Interface\\Addons\\AttuneHelper\\assets\\icon_ahsetall.blp",
+        sort = "Interface\\Addons\\AttuneHelper\\assets\\icon_prepare_disenchant.blp",
+        equipAHSet = "Interface\\Addons\\AttuneHelper\\assets\\icon_equip_ahset.blp"
+    }
+
+    local function GetChoiceMeta(choiceKey)
+        for _, choice in ipairs(AH.button_layout_button_choices or {}) do
+            if choice.key == choiceKey then
+                return AH.t(choice.label), iconMap[choice.key]
+            end
+        end
+        return tostring(choiceKey or ""), nil
+    end
+
+    local function SetActiveModifier(modifierName)
+        activeModifier = modifierName or "Normal"
+        for key, btn in pairs(modifierButtons) do
+            if key == activeModifier then
+                btn:SetNormalFontObject("GameFontHighlightLarge")
+            else
+                btn:SetNormalFontObject("GameFontHighlight")
+            end
+        end
+    end
+
+    local actionDropDown = CreateFrame("Frame", "AttuneHelperButtonLayoutActionDropdown", buttonLayoutPanel, "UIDropDownMenuTemplate")
+    actionDropDown.currentDbKey = nil
+    AH.button_layout_option_controls.actionDropdown = actionDropDown
+
+    UIDropDownMenu_Initialize(actionDropDown, function()
+        if not actionDropDown.currentDbKey then
+            return
+        end
+        local currentValue = AttuneHelperDB[actionDropDown.currentDbKey]
+        for _, choice in ipairs(GetChoicePool()) do
+            local info = UIDropDownMenu_CreateInfo()
+            info.text = AH.t(choice.label)
+            info.value = choice.key
+            info.func = function(btn)
+                AttuneHelperDB[actionDropDown.currentDbKey] = btn.value
+                AH.SaveAllSettings()
+                if AH.RefreshButtonLayoutEditor then
+                    AH.RefreshButtonLayoutEditor()
+                end
+                if AH.UpdateModifierButtonVisibility then
+                    AH.UpdateModifierButtonVisibility()
+                end
+            end
+            info.checked = (currentValue == choice.key)
+            UIDropDownMenu_AddButton(info)
+        end
+    end)
+
+    local normalBtn = CreateFrame("Button", nil, buttonLayoutPanel, "UIPanelButtonTemplate")
+    normalBtn:SetPoint("TOPLEFT", modifierLabel, "BOTTOMLEFT", 0, -6)
+    normalBtn:SetSize(68, 22)
+    normalBtn:SetText("Normal")
+    normalBtn:SetScript("OnClick", function()
+        SetActiveModifier("Normal")
+        if AH.RefreshButtonLayoutEditor then
+            AH.RefreshButtonLayoutEditor()
+        end
+    end)
+    modifierButtons.Normal = normalBtn
+
+    local shiftBtn = CreateFrame("Button", nil, buttonLayoutPanel, "UIPanelButtonTemplate")
+    shiftBtn:SetPoint("LEFT", normalBtn, "RIGHT", 6, 0)
+    shiftBtn:SetSize(62, 22)
+    shiftBtn:SetText("Shift")
+    shiftBtn:SetScript("OnClick", function()
+        SetActiveModifier("Shift")
+        if AH.RefreshButtonLayoutEditor then
+            AH.RefreshButtonLayoutEditor()
+        end
+    end)
+    modifierButtons.Shift = shiftBtn
+
+    local ctrlBtn = CreateFrame("Button", nil, buttonLayoutPanel, "UIPanelButtonTemplate")
+    ctrlBtn:SetPoint("LEFT", shiftBtn, "RIGHT", 6, 0)
+    ctrlBtn:SetSize(54, 22)
+    ctrlBtn:SetText("Ctrl")
+    ctrlBtn:SetScript("OnClick", function()
+        SetActiveModifier("Ctrl")
+        if AH.RefreshButtonLayoutEditor then
+            AH.RefreshButtonLayoutEditor()
+        end
+    end)
+    modifierButtons.Ctrl = ctrlBtn
+
+    local function CreateActionPicker(slotType, titleText, anchor, yOffset)
+        local title = buttonLayoutPanel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        title:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, yOffset)
+        title:SetText(titleText)
+        actionTitles[slotType] = title
+
+        local btn = CreateFrame("Button", nil, buttonLayoutPanel)
+        btn:SetSize(26, 26)
+        btn:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 2, -6)
+        btn:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Buttons\\UI-Quickslot-Depress",
+            edgeSize = 2,
+            insets = { left = -1, right = -1, top = -1, bottom = -1 }
+        })
+        btn:SetBackdropColor(0, 0, 0, 0.6)
+        local icon = btn:CreateTexture(nil, "ARTWORK")
+        icon:SetAllPoints(btn)
+        btn.icon = icon
+        actionButtons[slotType] = btn
+
+        local txt = buttonLayoutPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+        txt:SetPoint("LEFT", btn, "RIGHT", 8, 0)
+        txt:SetJustifyH("LEFT")
+        txt:SetWidth(220)
+        actionTexts[slotType] = txt
+
+        btn:SetScript("OnClick", function(self)
+            actionDropDown.currentDbKey = GetLayoutDbKey(activeModifier, slotType)
+            ToggleDropDownMenu(1, nil, actionDropDown, self, 0, 0)
+        end)
+    end
+
+    CreateActionPicker("Top", "Top Button", normalBtn, -14)
+    CreateActionPicker("Center", "Center Button", actionButtons.Top, -12)
+    CreateActionPicker("Bottom", "Bottom Button", actionButtons.Center, -12)
+
+    local function RefreshCustomLayoutVisibility()
+        local preset = (AttuneHelperDB and AttuneHelperDB["Button Layout Preset"]) or "Standard"
+        local showCustom = (preset == "Custom")
+        if visualHeader then if showCustom then visualHeader:Show() else visualHeader:Hide() end end
+        if modifierLabel then if showCustom then modifierLabel:Show() else modifierLabel:Hide() end end
+        for _, btn in pairs(modifierButtons) do
+            if showCustom then btn:Show() else btn:Hide() end
+        end
+        for _, btn in pairs(actionButtons) do
+            if showCustom then btn:Show() else btn:Hide() end
+        end
+        for _, fs in pairs(actionTitles) do
+            if showCustom then fs:Show() else fs:Hide() end
+        end
+        for _, fs in pairs(actionTexts) do
+            if showCustom then fs:Show() else fs:Hide() end
+        end
+    end
+
+    local function RefreshButtonLayoutEditor()
+        local inMiniMode = (AttuneHelperDB and AttuneHelperDB["Mini Mode"] == 1)
+        if hideCenterCheckbox then
+            if inMiniMode then
+                if AttuneHelperDB["Hide Center Button in Normal Mode"] == 1 then
+                    AttuneHelperDB["Hide Center Button in Normal Mode"] = 0
+                    hideCenterCheckbox:SetChecked(false)
+                    AH.SaveAllSettings()
+                    if AH.UpdateModifierButtonVisibility then
+                        AH.UpdateModifierButtonVisibility()
+                    end
+                end
+                hideCenterCheckbox:Disable()
+                hideCenterCheckbox:SetAlpha(0.45)
+            else
+                hideCenterCheckbox:Enable()
+                hideCenterCheckbox:SetAlpha(1)
+            end
+        end
+
+        local preset = (AttuneHelperDB and AttuneHelperDB["Button Layout Preset"]) or "Standard"
+        if preset ~= "Custom" then
+            for _, btn in pairs(modifierButtons) do
+                btn:Hide()
+            end
+            for _, btn in pairs(actionButtons) do
+                btn:Hide()
+            end
+            for _, fs in pairs(actionTitles) do
+                fs:Hide()
+            end
+            for _, fs in pairs(actionTexts) do
+                fs:Hide()
+            end
+            if visualHeader then visualHeader:Hide() end
+            if modifierLabel then modifierLabel:Hide() end
+            return
+        end
+
+        local hideCenterEnabled = (AttuneHelperDB and AttuneHelperDB["Hide Center Button in Normal Mode"] == 1)
+        local showCenter = not hideCenterEnabled
+
+        if modifierButtons.Ctrl then
+            if hideCenterEnabled then
+                modifierButtons.Ctrl:Enable()
+                modifierButtons.Ctrl:SetAlpha(1)
+            else
+                modifierButtons.Ctrl:Disable()
+                modifierButtons.Ctrl:SetAlpha(0.45)
+                if activeModifier == "Ctrl" then
+                    activeModifier = "Normal"
+                end
+            end
+        end
+
+        SetActiveModifier(activeModifier)
+        if actionButtons.Center then
+            if showCenter then actionButtons.Center:Show() else actionButtons.Center:Hide() end
+        end
+        if actionTitles.Center then
+            if showCenter then actionTitles.Center:Show() else actionTitles.Center:Hide() end
+        end
+        if actionTexts.Center then
+            if showCenter then actionTexts.Center:Show() else actionTexts.Center:Hide() end
+        end
+
+        local slotList = showCenter and { "Top", "Center", "Bottom" } or { "Top", "Bottom" }
+        for _, slotType in ipairs(slotList) do
+            local dbKey = GetLayoutDbKey(activeModifier, slotType)
+            local value = AttuneHelperDB[dbKey]
+            local displayText, iconPath = GetChoiceMeta(value)
+            local btn = actionButtons[slotType]
+            if btn and btn.icon then
+                btn.icon:SetTexture(iconPath or "Interface\\Icons\\INV_Misc_QuestionMark")
+            end
+            local txt = actionTexts[slotType]
+            if txt then
+                txt:SetText(displayText)
+            end
+        end
+    end
+
+    AH.RefreshButtonLayoutOptionVisibility = RefreshCustomLayoutVisibility
+    AH.RefreshButtonLayoutEditor = RefreshButtonLayoutEditor
+    buttonLayoutPanel:SetScript("OnShow", RefreshCustomLayoutVisibility)
+    buttonLayoutPanel:HookScript("OnShow", RefreshButtonLayoutEditor)
+    SetActiveModifier("Normal")
+    RefreshButtonLayoutEditor()
+    RefreshCustomLayoutVisibility()
+
+    return buttonLayoutPanel
+end
+
+------------------------------------------------------------------------
 -- Create forge options panel
 ------------------------------------------------------------------------
 function AH.CreateForgeOptionsPanel(mainPanel)
@@ -961,6 +1497,18 @@ function AH.CreateForgeOptionsPanel(mainPanel)
         
         yOffset = yOffset - 25
     end
+
+    yOffset = yOffset - 12
+    local disableBoe284Cb = AH.CreateCheckbox(
+        "Disable Auto Equip on 284 BoE Forges if Base Attuned",
+        forgeOptionsPanel,
+        16,
+        yOffset,
+        true,
+        "Disable Auto Equip 284 BoE Forges if Base Attuned"
+    )
+    disableBoe284Cb:SetScript("OnClick", AH.SaveSettingsForced)
+    table.insert(AH.general_option_checkboxes, disableBoe284Cb)
 
     return forgeOptionsPanel
 end
@@ -1034,9 +1582,11 @@ function AH.InitializeOptionControls()
     wipe(AH.general_option_checkboxes)
     wipe(AH.forge_type_checkboxes)
     wipe(AH.weapon_control_checkboxes)
+    AH.forge_option_controls = {}
     
     -- Initialize theme controls table
     AH.theme_option_controls = {}
+    AH.button_layout_option_controls = {}
     
     print("|cff00ff00[AttuneHelper]|r Option control arrays initialized")
 end
@@ -1045,6 +1595,10 @@ end
 -- Initialize all options panels
 ------------------------------------------------------------------------
 function AH.InitializeAllOptions()
+    if AH.UI and AH.UI.optionsPanels and AH.UI.optionsPanels.main and AH.UI.optionsPanels.main:IsObjectType("Frame") then
+        return
+    end
+
     -- Initialize the data structures first
     AH.InitializeOptionControls()
     
@@ -1054,6 +1608,7 @@ function AH.InitializeAllOptions()
     -- Create sub-panels
     local generalPanel = AH.CreateGeneralOptionsPanel(mainPanel)
     local themePanel = AH.CreateThemeOptionsPanel(mainPanel)
+    local buttonLayoutPanel = AH.CreateButtonLayoutOptionsPanel(mainPanel)
     local blacklistPanel = AH.CreateBlacklistOptionsPanel(mainPanel)
     local forgePanel = AH.CreateForgeOptionsPanel(mainPanel)
     local weaponPanel = AH.CreateWeaponControlsPanel(mainPanel)
@@ -1063,6 +1618,7 @@ function AH.InitializeAllOptions()
         main = mainPanel,
         general = generalPanel,
         theme = themePanel,
+        buttonLayout = buttonLayoutPanel,
         blacklist = blacklistPanel,
         forge = forgePanel,
         weapon = weaponPanel

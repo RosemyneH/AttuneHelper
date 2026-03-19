@@ -3,10 +3,11 @@
 local AH = _G.AttuneHelper
 
 -- Throttling variables
-AH.deltaTime = 0
-AH.CHAT_MSG_SYSTEM_THROTTLE = 0.2
 AH.lastAutoEquipTime = 0
 AH.AUTO_EQUIP_COOLDOWN = 2.0 -- ʕ •ᴥ•ʔ✿ Prevent spam equipping ✿ ʕ •ᴥ•ʔ
+AH.pendingAutoEquipRetry = false
+AH.lastUnitKillAccountRefreshTime = AH.lastUnitKillAccountRefreshTime or 0
+AH.UNIT_KILL_ACCOUNT_REFRESH_COOLDOWN = AH.UNIT_KILL_ACCOUNT_REFRESH_COOLDOWN or 0.75
 
 -- Session state variables
 AH.isSCKLoaded = false
@@ -15,8 +16,6 @@ AH.lastAttemptedSlotForEquip = nil
 AH.lastAttemptedItemTypeForEquip = nil
 
 -- Export for legacy compatibility
-_G.deltaTime = AH.deltaTime
-_G.CHAT_MSG_SYSTEM_THROTTLE = AH.CHAT_MSG_SYSTEM_THROTTLE
 _G.isSCKLoaded = AH.isSCKLoaded
 _G.cannotEquipOffHandWeaponThisSession = AH.cannotEquipOffHandWeaponThisSession
 _G.lastAttemptedSlotForEquip = AH.lastAttemptedSlotForEquip
@@ -30,48 +29,56 @@ function AH.ShouldTriggerAutoEquip()
 
     local currentTime = GetTime()
     local cooldownTime = AH.AUTO_EQUIP_COOLDOWN
-    local inCombat = InCombatLockdown()
-
-    -- ʕ •ᴥ•ʔ✿ During combat, use shorter cooldown but ensure bag data is fresh ✿ ʕ •ᴥ•ʔ
-    if inCombat then
-        cooldownTime = math.max(0.5, AH.AUTO_EQUIP_COOLDOWN * 0.5) -- Reduce cooldown in combat
-    end
 
     if currentTime - AH.lastAutoEquipTime < cooldownTime then
-        local remaining = cooldownTime - (currentTime - AH.lastAutoEquipTime)
         return false
     end
 
     return true
 end
 
-function AH.TriggerThrottledAutoEquip(delay)
-    if not AH.ShouldTriggerAutoEquip() then return end
+function AH.ScheduleAutoEquipRetry()
+    if AH.pendingAutoEquipRetry then
+        return
+    end
 
-    delay = delay or 0.3
-    local inCombat = InCombatLockdown()
+    local cooldownTime = AH.AUTO_EQUIP_COOLDOWN or 2.0
+    local elapsed = GetTime() - (AH.lastAutoEquipTime or 0)
+    local remaining = cooldownTime - elapsed
+    if remaining < 0 then
+        remaining = 0
+    end
+
+    AH.pendingAutoEquipRetry = true
+    AH.Wait(remaining + 0.05, function()
+        AH.pendingAutoEquipRetry = false
+        AH.TriggerThrottledAutoEquip(0.02)
+    end)
+end
+
+function AH.TriggerThrottledAutoEquip(delay)
+    if not AH.ShouldTriggerAutoEquip() then
+        if AttuneHelperDB["Auto Equip Attunable After Combat"] == 1 and AH.ScheduleAutoEquipRetry then
+            AH.ScheduleAutoEquipRetry()
+        end
+        return
+    end
+
+    delay = delay or 0.05
     AH.lastAutoEquipTime = GetTime()
 
     local equipButton = AH.UI.buttons and AH.UI.buttons.equipAll
     if equipButton and equipButton:GetScript("OnClick") then
         local fn = equipButton:GetScript("OnClick")
-
-        -- ʕ •ᴥ•ʔ✿ During combat, force bag cache refresh before equipping ✿ ʕ •ᴥ•ʔ
-        if inCombat then
-            AH.Wait(delay, function()
-                -- Force refresh all bag caches during combat to ensure current data
-                if AH.RefreshBagCacheForCombat then
-                    AH.RefreshBagCacheForCombat()
-                elseif AH.RefreshAllBagCaches then
-                    AH.RefreshAllBagCaches()
-                end
-                -- Small additional delay to let cache settle during combat
-                AH.Wait(0.05, fn)
-            end)
-        else
-            AH.Wait(delay, fn)
-        end
+        AH.Wait(delay, fn)
     end
+end
+
+local function IsPrestigedCharacter()
+    if type(CMCGetMultiClassEnabled) ~= "function" then
+        return false
+    end
+    return (CMCGetMultiClassEnabled() or 1) >= 2
 end
 
 ------------------------------------------------------------------------
@@ -121,7 +128,6 @@ function AH.RegisterEvents()
     AH.UI.mainFrame:RegisterEvent("ADDON_LOADED")
     AH.UI.mainFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
     AH.UI.mainFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    AH.UI.mainFrame:RegisterEvent("PLAYER_LOGIN")
     AH.UI.mainFrame:RegisterEvent("BAG_UPDATE")
     AH.UI.mainFrame:RegisterEvent("UI_ERROR_MESSAGE")
     AH.UI.mainFrame:RegisterEvent("QUEST_COMPLETE")
@@ -130,6 +136,8 @@ function AH.RegisterEvents()
     AH.UI.mainFrame:RegisterEvent("ITEM_PUSH")
     AH.UI.mainFrame:RegisterEvent("MERCHANT_SHOW")
     AH.UI.mainFrame:RegisterEvent("MERCHANT_CLOSED")
+    AH.UI.mainFrame:RegisterEvent("CHAT_MSG_SYSTEM")
+    AH.UI.mainFrame:RegisterEvent("UNIT_KILL")
 
     -- Set the event handler
     AH.UI.mainFrame:SetScript("OnEvent", AH.OnEvent)
@@ -146,7 +154,6 @@ function AH.OnEvent(self, event, arg1)
         -- Check for SCK addon
         if _G["SCK"] and type(_G["SCK"].loop) == "function" then
             AH.isSCKLoaded = true
-            AH.print_debug_general("SCK detected.")
         end
 
         -- Initialize UI components now that saved variables are loaded
@@ -173,12 +180,15 @@ function AH.OnEvent(self, event, arg1)
             end
         end)
 
-        AH.Wait(3, function()
+        AH.Wait(0.5, function()
             -- Only update regular bags, not bank
             for b = 0, 4 do
                 if AH.UpdateBagCache then
                     AH.UpdateBagCache(b)
                 end
+            end
+            if AH.RebuildEquipSlotCache then
+                AH.RebuildEquipSlotCache()
             end
             if AH.UpdateItemCountText then
                 AH.UpdateItemCountText()
@@ -189,63 +199,40 @@ function AH.OnEvent(self, event, arg1)
             return
         end
 
+        local updateMask = AH.UPDATE_MASK or { FULL_LIST = 1, OBTAINED = 2, ATTUNED_PERCENT = 4 }
+
         -- Only update regular bags (0-4), skip bank bags (5+)
         if arg1 <= 4 then
-            if AH.UpdateBagCache then
-                AH.UpdateBagCache(arg1)
-            end
-            if AH.UpdateItemCountText then
-                AH.UpdateItemCountText()
+            if AH.RequestUpdateList then
+                AH.RequestUpdateList(updateMask.OBTAINED, arg1)
             end
         end
-
-        -- ʕ •ᴥ•ʔ✿ Throttle BAG_UPDATE auto-equip to prevent spam ✿ ʕ •ᴥ•ʔ
-        local nT = GetTime()
-        local inCombat = InCombatLockdown()
-
-        if nT - (AH.deltaTime or 0) < AH.CHAT_MSG_SYSTEM_THROTTLE then
-            return
-        end
-        AH.deltaTime = nT
-
-        -- Only trigger auto-equip if throttle allows it
-        -- ʕ •ᴥ•ʔ✿ During combat, use slightly longer delay to ensure cache is current ✿ ʕ •ᴥ•ʔ
-        local equipDelay = inCombat and 0.15 or 0.2
-        AH.TriggerThrottledAutoEquip(equipDelay)
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        AH.Wait(0.15, function()
+            if AH.RequestUpdateList then
+                local updateMask = AH.UPDATE_MASK or { FULL_LIST = 1, OBTAINED = 2, ATTUNED_PERCENT = 4 }
+                AH.RequestUpdateList(bit.bor(updateMask.OBTAINED, updateMask.ATTUNED_PERCENT))
+            end
+        end)
     elseif event == "QUEST_COMPLETE" or event == "QUEST_TURNED_IN" then
-        AH.Wait(0.5, function()
-            if InCombatLockdown() and AH.RefreshBagCacheForCombat then
-                AH.RefreshBagCacheForCombat()
-            elseif AH.RefreshAllBagCaches then
-                AH.RefreshAllBagCaches()
+        AH.Wait(0.2, function()
+            if AH.RequestUpdateList then
+                AH.RequestUpdateList((AH.UPDATE_MASK and AH.UPDATE_MASK.FULL_LIST) or 1)
             end
-
-            -- ʕ •ᴥ•ʔ✿ Quest rewards are significant, allow auto-equip ✿ ʕ •ᴥ•ʔ
-            AH.TriggerThrottledAutoEquip(0.2)
         end)
     elseif event == "LOOT_CLOSED" then
         -- Sometimes loot doesn't trigger BAG_UPDATE properly
         AH.Wait(0.3, function()
-            if InCombatLockdown() and AH.RefreshBagCacheForCombat then
-                AH.RefreshBagCacheForCombat()
-            elseif AH.RefreshAllBagCaches then
-                AH.RefreshAllBagCaches()
+            if AH.RequestUpdateList then
+                AH.RequestUpdateList((AH.UPDATE_MASK and AH.UPDATE_MASK.FULL_LIST) or 1)
             end
-
-            -- ʕ •ᴥ•ʔ✿ Only equip after loot if sufficient time has passed ✿ ʕ •ᴥ•ʔ
-            AH.TriggerThrottledAutoEquip(InCombatLockdown() and 0.4 or 0.3)
         end)
     elseif event == "ITEM_PUSH" then
         -- Item push events for items being added to bags
         AH.Wait(0.2, function()
-            if InCombatLockdown() and AH.RefreshBagCacheForCombat then
-                AH.RefreshBagCacheForCombat()
-            elseif AH.RefreshAllBagCaches then
-                AH.RefreshAllBagCaches()
+            if AH.RequestUpdateList then
+                AH.RequestUpdateList((AH.UPDATE_MASK and AH.UPDATE_MASK.OBTAINED) or 2)
             end
-
-            -- ʕ •ᴥ•ʔ✿ ITEM_PUSH is very frequent, throttle heavily ✿ ʕ •ᴥ•ʔ
-            AH.TriggerThrottledAutoEquip(InCombatLockdown() and 0.2 or 0.1)
         end)
     elseif event == "MERCHANT_SHOW" then
         if AH.SetMerchantWindowOpen then
@@ -259,26 +246,30 @@ function AH.OnEvent(self, event, arg1)
         else
             AH.merchantWindowOpen = false
         end
-    elseif event == "PLAYER_REGEN_ENABLED" and AttuneHelperDB["Auto Equip Attunable After Combat"] == 1 then
-        -- When leaving combat, do a full equip cycle with fresh cache
-        AH.Wait(0.2, function()
-            if AH.RefreshAllBagCaches then
-                AH.RefreshAllBagCaches()
+    elseif event == "CHAT_MSG_SYSTEM" then
+        local message = arg1
+        if message and string.find(message, "You have attuned with", 1, true) then
+            if AH.RequestUpdateList then
+                local updateMask = AH.UPDATE_MASK or { FULL_LIST = 1, OBTAINED = 2, ATTUNED_PERCENT = 4 }
+                AH.RequestUpdateList(bit.bor(updateMask.OBTAINED, updateMask.ATTUNED_PERCENT))
             end
+        end
+    elseif event == "UNIT_KILL" then
+        if not IsPrestigedCharacter() then
+            return
+        end
 
-            -- ʕ •ᴥ•ʔ✿ Combat end is important, bypass throttle ✿ ʕ •ᴥ•ʔ
-            AH.lastAutoEquipTime = 0 -- Reset throttle
-            local equipButton = AH.UI.buttons and AH.UI.buttons.equipAll
-            if equipButton and equipButton:GetScript("OnClick") then
-                local fn = equipButton:GetScript("OnClick")
-                fn()
-            end
-        end)
+        local now = GetTime()
+        local cooldown = AH.UNIT_KILL_ACCOUNT_REFRESH_COOLDOWN or 0.75
+        if (now - (AH.lastUnitKillAccountRefreshTime or 0)) < cooldown then
+            return
+        end
+        AH.lastUnitKillAccountRefreshTime = now
 
-        -- ʕ •ᴥ•ʔ✿ Periodic memory cleanup after combat ✿ ʕ •ᴥ•ʔ
-        AH.Wait(2.0, function()
-            if AH.CleanupCaches then
-                AH.CleanupCaches()
+        AH.Wait(0.4, function()
+            if AH.RequestUpdateList then
+                local updateMask = AH.UPDATE_MASK or { FULL_LIST = 1, OBTAINED = 2, ATTUNED_PERCENT = 4 }
+                AH.RequestUpdateList(bit.bor(updateMask.OBTAINED, updateMask.ATTUNED_PERCENT))
             end
         end)
     elseif event == "UI_ERROR_MESSAGE" and arg1 == ERR_ITEM_CANNOT_BE_EQUIPPED then

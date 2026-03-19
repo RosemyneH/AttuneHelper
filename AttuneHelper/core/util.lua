@@ -122,6 +122,173 @@ function AH.IsWeaponTypeForOffHandCheck(equipLoc)
 end
 _G.IsWeaponTypeForOffHandCheck = AH.IsWeaponTypeForOffHandCheck
 
+AH.UPDATE_MASK = AH.UPDATE_MASK or {
+    FULL_LIST = 1,
+    OBTAINED = 2,
+    ATTUNED_PERCENT = 4
+}
+
+local _timeSinceLastUpdate = 0
+local _needUpdate = 0
+local _pendingBagUpdates = {}
+local UPDATE_BATCH_INTERVAL = 0.5
+local _updateFrameActive = false
+local updateFrame
+
+local function _flushPendingBagUpdates()
+    local bags = {}
+    for bagID in pairs(_pendingBagUpdates) do
+        if type(bagID) == "number" and bagID >= 0 and bagID <= 4 then
+            table.insert(bags, bagID)
+        end
+        _pendingBagUpdates[bagID] = nil
+    end
+    table.sort(bags)
+    return bags
+end
+
+local function _actualUpdateFunc(mask, pendingBagIDs)
+    if mask == 0 then
+        return
+    end
+
+    local fullList = bit.band(mask, AH.UPDATE_MASK.FULL_LIST) ~= 0
+    local obtained = bit.band(mask, AH.UPDATE_MASK.OBTAINED) ~= 0
+    local attunedPercent = bit.band(mask, AH.UPDATE_MASK.ATTUNED_PERCENT) ~= 0
+    local shouldRefreshText = (AH.IsDisplayVisible and AH.IsDisplayVisible()) or (AttuneHelperDB and AttuneHelperDB["Auto Equip Attunable After Combat"] == 1)
+
+    if fullList then
+        if AH.RefreshAllBagCaches then
+            AH.RefreshAllBagCaches()
+        end
+    elseif obtained then
+        local updatedAnyBag = false
+        if AH.UpdateBagCache and pendingBagIDs and #pendingBagIDs > 0 then
+            for _, bagID in ipairs(pendingBagIDs) do
+                AH.UpdateBagCache(bagID)
+                updatedAnyBag = true
+            end
+            if updatedAnyBag and AH.equipSlotCacheDirty and AH.RebuildEquipSlotCache then
+                AH.RebuildEquipSlotCache()
+            end
+            if shouldRefreshText and AH.UpdateItemCountText then
+                AH.UpdateItemCountText()
+            end
+        elseif AH.RefreshAllBagCaches then
+            AH.RefreshAllBagCaches()
+            updatedAnyBag = true
+        end
+
+        if not updatedAnyBag and shouldRefreshText and AH.UpdateItemCountText then
+            AH.UpdateItemCountText()
+        end
+    elseif attunedPercent and shouldRefreshText and AH.UpdateItemCountText then
+        AH.UpdateItemCountText()
+    end
+
+    if (fullList or obtained or attunedPercent) and AH.TriggerThrottledAutoEquip then
+        AH.TriggerThrottledAutoEquip(0.02)
+    end
+end
+
+local function _frameUpdate(_, elapsed)
+    _timeSinceLastUpdate = _timeSinceLastUpdate + elapsed
+
+    if _needUpdate ~= 0 and _timeSinceLastUpdate > UPDATE_BATCH_INTERVAL then
+        local mask = _needUpdate
+        _needUpdate = 0
+        _timeSinceLastUpdate = 0
+        _actualUpdateFunc(mask, _flushPendingBagUpdates())
+    end
+
+    if _needUpdate == 0 and _updateFrameActive then
+        _updateFrameActive = false
+        updateFrame:SetScript("OnUpdate", nil)
+    end
+end
+
+updateFrame = CreateFrame("Frame")
+local function _activateUpdateFrame()
+    if not _updateFrameActive then
+        _updateFrameActive = true
+        _timeSinceLastUpdate = 0
+        updateFrame:SetScript("OnUpdate", _frameUpdate)
+    end
+end
+
+function AH.RequestUpdateList(mask, bagID)
+    if type(mask) ~= "number" then
+        return
+    end
+
+    if type(bagID) == "number" and bagID >= 0 and bagID <= 4 then
+        _pendingBagUpdates[bagID] = true
+    end
+
+    _needUpdate = bit.bor(_needUpdate, mask)
+    _activateUpdateFrame()
+
+    if bit.band(mask, AH.UPDATE_MASK.FULL_LIST) ~= 0 then
+        local pendingMask = _needUpdate
+        _needUpdate = 0
+        _timeSinceLastUpdate = 0
+        _actualUpdateFunc(pendingMask, _flushPendingBagUpdates())
+        if _updateFrameActive then
+            _updateFrameActive = false
+            updateFrame:SetScript("OnUpdate", nil)
+        end
+    end
+end
+_G.RequestUpdateList = AH.RequestUpdateList
+
+local ServerBagMap = {
+    [0] = 0xFF,
+    [1] = 0x13,
+    [2] = 0x14,
+    [3] = 0x15,
+    [4] = 0x16
+}
+
+function AH.NativeToServerBagSlot(nativeBag, nativeSlot)
+    if not nativeBag or not nativeSlot then return nil, nil end
+
+    if nativeBag == 0 then
+        return 0xFF, 22 + nativeSlot
+    end
+
+    local serverBag = ServerBagMap[nativeBag]
+    if serverBag then
+        return serverBag, nativeSlot - 1
+    end
+
+    return nil, nil
+end
+_G.NativeToServerBagSlot = AH.NativeToServerBagSlot
+
+function AH.IsSoulboundFromNativeBagSlot(nativeBag, nativeSlot)
+    if not _G.Custom_IsItemSoulbound then return false end
+
+    local serverBag, serverSlot = AH.NativeToServerBagSlot(nativeBag, nativeSlot)
+    if not serverBag then return false end
+
+    local ok, result = pcall(_G.Custom_IsItemSoulbound, serverBag, serverSlot)
+    if not ok then return false end
+    return result == true or result == 1
+end
+_G.IsSoulboundFromNativeBagSlot = AH.IsSoulboundFromNativeBagSlot
+
+function AH.IsItemInEquipMgrFromNativeBagSlot(nativeBag, nativeSlot)
+    if not _G.Custom_IsItemEquipMgr then return false end
+
+    local serverBag, serverSlot = AH.NativeToServerBagSlot(nativeBag, nativeSlot)
+    if not serverBag then return false end
+
+    local ok, result = pcall(_G.Custom_IsItemEquipMgr, serverBag, serverSlot)
+    if not ok then return false end
+    return result == 1
+end
+_G.IsItemInEquipMgrFromNativeBagSlot = AH.IsItemInEquipMgrFromNativeBagSlot
+
 ------------------------------------------------------------------------
 -- Table helpers
 ------------------------------------------------------------------------
@@ -158,7 +325,6 @@ function AH.ConvertForgeMapToApiParam(forgeLevelMapValue)
 end
 _G.ConvertForgeMapToApiParam = AH.ConvertForgeMapToApiParam
 
--- Uses Blizzard's (or custom) API to resolve forge level for a link
 function AH.GetForgeLevelFromLink(itemLink)
     if not itemLink then return AH.FORGE_LEVEL_MAP.BASE end
     if _G.GetItemLinkTitanforge then
@@ -167,9 +333,9 @@ function AH.GetForgeLevelFromLink(itemLink)
         for _, v in pairs(AH.FORGE_LEVEL_MAP) do
             if forgeValue == v then return forgeValue end
         end
-        AH.print_debug_general("GetForgeLevelFromLink: unexpected value "..tostring(forgeValue))
+        --AH.print_debug_general("GetForgeLevelFromLink: unexpected value "..tostring(forgeValue))
     else
-        AH.print_debug_general("GetForgeLevelFromLink: API not available/disabled")
+        --AH.print_debug_general("GetForgeLevelFromLink: API not available/disabled")
     end
     return AH.FORGE_LEVEL_MAP.BASE
 end
@@ -192,60 +358,70 @@ _G.IsMythic = AH.IsMythic
 ------------------------------------------------------------------------
 -- ʕ •ᴥ•ʔ✿ Optimized Wait helper with memory management ✿ ʕ •ᴥ•ʔ
 ------------------------------------------------------------------------
-local waitTable = setmetatable({}, {__mode = "k"})  -- Weak keys for memory efficiency
+local waitTable = {}
 local waitFrame = nil
 local lastWaitCleanup = 0
 local WAIT_CLEANUP_INTERVAL = 60  -- Clean every 60 seconds
+
+local function WaitFrameOnUpdate(_, elapsed)
+    if #waitTable == 0 then
+        waitFrame:SetScript("OnUpdate", nil)
+        return
+    end
+
+    local currentTime = GetTime()
+
+    if currentTime - lastWaitCleanup > WAIT_CLEANUP_INTERVAL then
+        local oldCount = #waitTable
+        for i = #waitTable, 1, -1 do
+            local rec = waitTable[i]
+            if not rec or not rec[2] then
+                table.remove(waitTable, i)
+            end
+        end
+        local newCount = #waitTable
+        if oldCount ~= newCount then
+            --AH.print_debug_general(string.format("Wait table cleaned: %d -> %d entries", oldCount, newCount))
+        end
+        lastWaitCleanup = currentTime
+    end
+
+    local i = 1
+    while i <= #waitTable do
+        local rec = waitTable[i]
+        if rec then
+            local d, f, params = rec[1], rec[2], rec[3]
+            if d > elapsed then
+                rec[1] = d - elapsed
+                i = i + 1
+            else
+                table.remove(waitTable, i)
+                local success, err = pcall(f, unpack(params or {}))
+                if not success then
+                    --AH.print_debug_general("Wait function error: " .. tostring(err))
+                end
+            end
+        else
+            table.remove(waitTable, i)
+        end
+    end
+
+    if #waitTable == 0 then
+        waitFrame:SetScript("OnUpdate", nil)
+    end
+end
 
 function AH.Wait(delay, func, ...)
     if type(delay) ~= "number" or type(func) ~= "function" then return false end
     
     if not waitFrame then
         waitFrame = CreateFrame("Frame", nil, UIParent)
-        waitFrame:SetScript("OnUpdate", function(_, elapsed)
-            local currentTime = GetTime()
-            
-            -- Periodic cleanup to prevent memory accumulation
-            if currentTime - lastWaitCleanup > WAIT_CLEANUP_INTERVAL then
-                local oldCount = #waitTable
-                -- Remove completed/invalid entries
-                for i = #waitTable, 1, -1 do
-                    local rec = waitTable[i]
-                    if not rec or not rec[2] then
-                        table.remove(waitTable, i)
-                    end
-                end
-                local newCount = #waitTable
-                if oldCount ~= newCount then
-                    AH.print_debug_general(string.format("Wait table cleaned: %d -> %d entries", oldCount, newCount))
-                end
-                lastWaitCleanup = currentTime
-            end
-            
-            local i = 1
-            while i <= #waitTable do
-                local rec = waitTable[i]
-                if rec then
-                    local d, f, params = rec[1], rec[2], rec[3]
-                    if d > elapsed then
-                        rec[1] = d - elapsed  -- Update delay in-place
-                        i = i + 1
-                    else
-                        table.remove(waitTable, i)
-                        -- Execute with pcall for safety
-                        local success, err = pcall(f, unpack(params or {}))
-                        if not success then
-                            AH.print_debug_general("Wait function error: " .. tostring(err))
-                        end
-                    end
-                else
-                    table.remove(waitTable, i)
-                end
-            end
-        end)
     end
     
     table.insert(waitTable, { delay, func, { ... } })
+    if not waitFrame:GetScript("OnUpdate") then
+        waitFrame:SetScript("OnUpdate", WaitFrameOnUpdate)
+    end
     return true
 end
 _G.AH_wait = AH.Wait -- maintain original global name
@@ -254,15 +430,28 @@ _G.AH_wait = AH.Wait -- maintain original global name
 -- Settings initialization
 ------------------------------------------------------------------------
 function AH.InitializeDefaultSettings()
+    AHCharSettings = AHCharSettings or {}
     if AttuneHelperDB["Background Style"] == nil then AttuneHelperDB["Background Style"] = "Tooltip" end
     if type(AttuneHelperDB["Background Color"]) ~= "table" or #AttuneHelperDB["Background Color"] < 4 then 
         AttuneHelperDB["Background Color"] = {0, 0, 0, 0.8} 
     end
     if AttuneHelperDB["Button Color"] == nil then AttuneHelperDB["Button Color"] = {1, 1, 1, 1} end
     if AttuneHelperDB["Button Theme"] == nil then AttuneHelperDB["Button Theme"] = "Normal" end
+    if AttuneHelperDB["Button Layout Preset"] == nil then AttuneHelperDB["Button Layout Preset"] = "Standard" end
+    if AttuneHelperDB["Button Layout Preset"] == "Compact" then AttuneHelperDB["Button Layout Preset"] = "Standard" end
+    if AttuneHelperDB["Layout Normal Top"] == nil then AttuneHelperDB["Layout Normal Top"] = "equipAll" end
+    if AttuneHelperDB["Layout Normal Center"] == nil then AttuneHelperDB["Layout Normal Center"] = "openSettings" end
+    if AttuneHelperDB["Layout Normal Bottom"] == nil then AttuneHelperDB["Layout Normal Bottom"] = "vendor" end
+    if AttuneHelperDB["Layout Shift Top"] == nil then AttuneHelperDB["Layout Shift Top"] = "toggleAutoEquip" end
+    if AttuneHelperDB["Layout Shift Center"] == nil then AttuneHelperDB["Layout Shift Center"] = "AHSetUpdate" end
+    if AttuneHelperDB["Layout Shift Bottom"] == nil then AttuneHelperDB["Layout Shift Bottom"] = "sort" end
+    if AttuneHelperDB["Layout Ctrl Top"] == nil then AttuneHelperDB["Layout Ctrl Top"] = "AHSetUpdate" end
+    if AttuneHelperDB["Layout Ctrl Center"] == nil then AttuneHelperDB["Layout Ctrl Center"] = "openSettings" end
+    if AttuneHelperDB["Layout Ctrl Bottom"] == nil then AttuneHelperDB["Layout Ctrl Bottom"] = "openSettings" end
     if AttuneHelperDB["Disable Auto-Equip Mythic BoE"] == nil then AttuneHelperDB["Disable Auto-Equip Mythic BoE"] = 1 end
     if AttuneHelperDB["Auto Equip Attunable After Combat"] == nil then AttuneHelperDB["Auto Equip Attunable After Combat"] = 0 end
     if AttuneHelperDB["Equip BoE Bountied Items"] == nil then AttuneHelperDB["Equip BoE Bountied Items"] = 0 end
+    if AttuneHelperDB["Disable Auto Equip 284 BoE Forges if Base Attuned"] == nil then AttuneHelperDB["Disable Auto Equip 284 BoE Forges if Base Attuned"] = 1 end
     if AttuneHelperDB["Mini Mode"] == nil then AttuneHelperDB["Mini Mode"] = 0 end
     if AttuneHelperDB["FramePosition"] == nil then AttuneHelperDB["FramePosition"] = { "CENTER", UIParent, "CENTER", 0, 0 } end
     if AttuneHelperDB["MiniFramePosition"] == nil then AttuneHelperDB["MiniFramePosition"] = { "CENTER", UIParent, "CENTER", 0, 0 } end
@@ -272,16 +461,29 @@ function AH.InitializeDefaultSettings()
     -- Handle legacy setting migration
     if AttuneHelperDB["EquipUntouchedVariants"] ~= nil and AttuneHelperDB["EquipNewAffixesOnly"] == nil then
         AttuneHelperDB["EquipNewAffixesOnly"] = AttuneHelperDB["EquipUntouchedVariants"]
-        AH.print_debug_general("AttuneHelper: Migrated old setting 'EquipUntouchedVariants' to 'EquipNewAffixesOnly'.")
+        --AH.print_debug_general("AttuneHelper: Migrated old setting 'EquipUntouchedVariants' to 'EquipNewAffixesOnly'.")
     end
     AttuneHelperDB["EquipUntouchedVariants"] = nil
 
     if AttuneHelperDB["EquipNewAffixesOnly"] == nil then AttuneHelperDB["EquipNewAffixesOnly"] = 0 end
 
+    -- Migrate old boolean toggle to threshold dropdown model
+    if AttuneHelperDB["AffixOnlyWarforgedAndAbove"] ~= nil and AttuneHelperDB["AffixOnlyMinForgeLevel"] == nil then
+        if AttuneHelperDB["AffixOnlyWarforgedAndAbove"] == 1 then
+            AttuneHelperDB["AffixOnlyMinForgeLevel"] = AH.FORGE_LEVEL_MAP.WARFORGED
+        else
+            AttuneHelperDB["AffixOnlyMinForgeLevel"] = -1
+        end
+    end
+    AttuneHelperDB["AffixOnlyWarforgedAndAbove"] = nil
+    if AttuneHelperDB["AffixOnlyMinForgeLevel"] == nil then
+        AttuneHelperDB["AffixOnlyMinForgeLevel"] = AH.FORGE_LEVEL_MAP.WARFORGED
+    end
+
     -- Handle renaming of EnableVendorPreview to EnableVendorSellConfirmationDialog
     if AttuneHelperDB["EnableVendorPreview"] ~= nil and AttuneHelperDB["EnableVendorSellConfirmationDialog"] == nil then
         AttuneHelperDB["EnableVendorSellConfirmationDialog"] = AttuneHelperDB["EnableVendorPreview"]
-        AH.print_debug_general("AttuneHelper: Migrated old setting 'EnableVendorPreview' to 'EnableVendorSellConfirmationDialog'.")
+        --AH.print_debug_general("AttuneHelper: Migrated old setting 'EnableVendorPreview' to 'EnableVendorSellConfirmationDialog'.")
     end
     AttuneHelperDB["EnableVendorPreview"] = nil -- Remove old key
 
@@ -303,20 +505,18 @@ function AH.InitializeDefaultSettings()
         ["Limit Selling to 12 Items?"] = 0, 
         ["Disable Auto-Equip Mythic BoE"] = 1, 
         ["Equip BoE Bountied Items"] = 0,
+        ["Disable Auto Equip 284 BoE Forges if Base Attuned"] = 1,
         ["Mini Mode"] = 0, 
-        ["EquipNewAffixesOnly"] = 0, 
+        ["EquipNewAffixesOnly"] = 1, 
+        ["AffixOnlyMinForgeLevel"] = AH.FORGE_LEVEL_MAP.WARFORGED,
         ["Prioritize Low iLvl for Auto-Equip"] = 1,
         ["EnableVendorSellConfirmationDialog"] = 1,
+        ["Vendor preview on Right (Default On)"] = 1,
         ["Draggable by Right Click"] = 1,
+        ["Lock AH in Place (Buttons Only Mouse)"] = 0,
+        ["Hide Center Button in Normal Mode"] = 0,
         ["Hide Disenchant Button"] = 0,  -- ʕ •ᴥ•ʔ✿ Show disenchant button by default ✿ ʕ •ᴥ•ʔ
-        ["Use Bag 1 for Disenchant"] = 0,  -- ʕ •ᴥ•ʔ✿ Use bag 0 by default ✿ ʕ •ᴥ•ʔ
-        -- ʕ •ᴥ•ʔ✿ Weapon type control options ✿ ʕ •ᴥ•ʔ
-        ["Allow MainHand 1H Weapons"] = 1,
-        ["Allow MainHand 2H Weapons"] = 1,
-        ["Allow OffHand 1H Weapons"] = 1,
-        ["Allow OffHand 2H Weapons"] = 0,  -- Disabled by default
-        ["Allow OffHand Shields"] = 1,
-        ["Allow OffHand Holdables"] = 1
+        ["Use Bag 1 for Disenchant"] = 0  -- ʕ •ᴥ•ʔ✿ Use bag 0 by default ✿ ʕ •ᴥ•ʔ
     }
     for optName, defValue in pairs(generalOptionDefaults) do
         if AttuneHelperDB[optName] == nil then 
@@ -335,6 +535,24 @@ function AH.InitializeDefaultSettings()
     for slotName, defValue in pairs(blacklistDefaults) do
         if AttuneHelperDB[slotName] == nil then 
             AttuneHelperDB[slotName] = defValue 
+        end
+    end
+
+    local weaponControlDefaults = {
+        ["Allow MainHand 1H Weapons"] = 1,
+        ["Allow MainHand 2H Weapons"] = 1,
+        ["Allow OffHand 1H Weapons"] = 1,
+        ["Allow OffHand 2H Weapons"] = 0,
+        ["Allow OffHand Shields"] = 1,
+        ["Allow OffHand Holdables"] = 1
+    }
+    for settingName, defaultValue in pairs(weaponControlDefaults) do
+        if AHCharSettings[settingName] == nil then
+            if AttuneHelperDB[settingName] ~= nil then
+                AHCharSettings[settingName] = AttuneHelperDB[settingName]
+            else
+                AHCharSettings[settingName] = defaultValue
+            end
         end
     end
     
@@ -443,6 +661,41 @@ function AH.InitializeDefaultSettings()
 end
 _G.InitializeDefaultSettings = AH.InitializeDefaultSettings
 
+function AH.GetWeaponControlSetting(settingName)
+    if not settingName then
+        return 0
+    end
+
+    AHCharSettings = AHCharSettings or {}
+    if AHCharSettings[settingName] ~= nil then
+        return AHCharSettings[settingName]
+    end
+    if AttuneHelperDB and AttuneHelperDB[settingName] ~= nil then
+        return AttuneHelperDB[settingName]
+    end
+
+    local weaponControlDefaults = {
+        ["Allow MainHand 1H Weapons"] = 1,
+        ["Allow MainHand 2H Weapons"] = 1,
+        ["Allow OffHand 1H Weapons"] = 1,
+        ["Allow OffHand 2H Weapons"] = 0,
+        ["Allow OffHand Shields"] = 1,
+        ["Allow OffHand Holdables"] = 1
+    }
+
+    return weaponControlDefaults[settingName] or 0
+end
+_G.GetWeaponControlSetting = AH.GetWeaponControlSetting
+
+function AH.SetWeaponControlSetting(settingName, value)
+    if not settingName then
+        return
+    end
+    AHCharSettings = AHCharSettings or {}
+    AHCharSettings[settingName] = value
+end
+_G.SetWeaponControlSetting = AH.SetWeaponControlSetting
+
 ------------------------------------------------------------------------
 -- ʕ •ᴥ•ʔ✿ Blacklist management ✿ ʕ •ᴥ•ʔ
 ------------------------------------------------------------------------
@@ -484,6 +737,6 @@ function AH.UpdateDisenchantButtonVisibility()
         end
     end
     
-    AH.print_debug_general(string.format("Disenchant buttons %s", shouldHide and "hidden" or "shown"))
+    --AH.print_debug_general(string.format("Disenchant buttons %s", shouldHide and "hidden" or "shown"))
 end
 _G.UpdateDisenchantButtonVisibility = AH.UpdateDisenchantButtonVisibility

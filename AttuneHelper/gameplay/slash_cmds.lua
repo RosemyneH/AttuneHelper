@@ -128,12 +128,14 @@ SlashCmdList["AHSET"] = function(msg)
         print("|cffff0000[AttuneHelper]|r Invalid item link provided.")
         return
     end
+    local identifier = AH.CreateItemIdentifier(itemLinkPart, itemName)
 
     local processedSlotArg = slotArg:lower()
 
     if processedSlotArg == "remove" then
-        if AHSetList[itemName] then
-            AHSetList[itemName] = nil
+        if AHSetList[identifier] or AHSetList[itemName] then
+            AHSetList[identifier] = nil
+            AHSetList[itemName] = nil -- Legacy key cleanup
             print("|cffffd200[AttuneHelper]|r '" .. itemName .. "' removed from AHSet.")
             for i=0,4 do AH.UpdateBagCache(i) end
             AH.UpdateItemCountText()
@@ -189,11 +191,13 @@ SlashCmdList["AHSET"] = function(msg)
         end
     end
 
-    if AHSetList[itemName] == targetSlotName then
-        AHSetList[itemName] = nil
+    if AHSetList[identifier] == targetSlotName or AHSetList[itemName] == targetSlotName then
+        AHSetList[identifier] = nil
+        AHSetList[itemName] = nil -- Legacy key cleanup
         print("|cffffd200[AttuneHelper]|r '" .. itemName .. "' removed from AHSet for slot " .. targetSlotName .. ".")
     else
-        AHSetList[itemName] = targetSlotName
+        AHSetList[identifier] = targetSlotName
+        AHSetList[itemName] = nil -- Prefer identifier keys to avoid name collisions
         print("|cffffd200[AttuneHelper]|r '" .. itemName .. "' added to AHSet, designated for slot " .. targetSlotName .. ".")
     end
 
@@ -478,53 +482,59 @@ function AH.SlashCommand(msg)
     -- ʕ •ᴥ•ʔ✿ Weapon type control commands ✿ ʕ •ᴥ•ʔ
     if msg == "weapons" then
         print("|cff00ff00[AttuneHelper]|r Weapon Type Settings:")
-        print("|cff00ff00MainHand 1H:|r " .. (AttuneHelperDB["Allow MainHand 1H Weapons"] == 1 and "|cff00ff00Enabled|r" or "|cffff0000Disabled|r"))
-        print("|cff00ff00MainHand 2H:|r " .. (AttuneHelperDB["Allow MainHand 2H Weapons"] == 1 and "|cff00ff00Enabled|r" or "|cffff0000Disabled|r"))
-        print("|cff00ff00OffHand 1H:|r " .. (AttuneHelperDB["Allow OffHand 1H Weapons"] == 1 and "|cff00ff00Enabled|r" or "|cffff0000Disabled|r"))
-        print("|cff00ff00OffHand 2H:|r " .. (AttuneHelperDB["Allow OffHand 2H Weapons"] == 1 and "|cff00ff00Enabled|r" or "|cffff0000Disabled|r"))
-        print("|cff00ff00OffHand Shields:|r " .. (AttuneHelperDB["Allow OffHand Shields"] == 1 and "|cff00ff00Enabled|r" or "|cffff0000Disabled|r"))
-        print("|cff00ff00OffHand Holdables:|r " .. (AttuneHelperDB["Allow OffHand Holdables"] == 1 and "|cff00ff00Enabled|r" or "|cffff0000Disabled|r"))
+        print("|cff00ff00MainHand 1H:|r " .. (AH.GetWeaponControlSetting("Allow MainHand 1H Weapons") == 1 and "|cff00ff00Enabled|r" or "|cffff0000Disabled|r"))
+        print("|cff00ff00MainHand 2H:|r " .. (AH.GetWeaponControlSetting("Allow MainHand 2H Weapons") == 1 and "|cff00ff00Enabled|r" or "|cffff0000Disabled|r"))
+        print("|cff00ff00OffHand 1H:|r " .. (AH.GetWeaponControlSetting("Allow OffHand 1H Weapons") == 1 and "|cff00ff00Enabled|r" or "|cffff0000Disabled|r"))
+        print("|cff00ff00OffHand 2H:|r " .. (AH.GetWeaponControlSetting("Allow OffHand 2H Weapons") == 1 and "|cff00ff00Enabled|r" or "|cffff0000Disabled|r"))
+        print("|cff00ff00OffHand Shields:|r " .. (AH.GetWeaponControlSetting("Allow OffHand Shields") == 1 and "|cff00ff00Enabled|r" or "|cffff0000Disabled|r"))
+        print("|cff00ff00OffHand Holdables:|r " .. (AH.GetWeaponControlSetting("Allow OffHand Holdables") == 1 and "|cff00ff00Enabled|r" or "|cffff0000Disabled|r"))
         return
     end
     
     if msg == "mh1h" then
-        AttuneHelperDB["Allow MainHand 1H Weapons"] = 1 - (AttuneHelperDB["Allow MainHand 1H Weapons"] or 0)
-        print("|cff00ff00[AttuneHelper]|r MainHand 1H weapons " .. (AttuneHelperDB["Allow MainHand 1H Weapons"] == 1 and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
+        local newValue = 1 - (AH.GetWeaponControlSetting("Allow MainHand 1H Weapons") or 0)
+        AH.SetWeaponControlSetting("Allow MainHand 1H Weapons", newValue)
+        print("|cff00ff00[AttuneHelper]|r MainHand 1H weapons " .. (newValue == 1 and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
         AH.ForceSaveSettings()
         return
     end
     
     if msg == "mh2h" then
-        AttuneHelperDB["Allow MainHand 2H Weapons"] = 1 - (AttuneHelperDB["Allow MainHand 2H Weapons"] or 0)
-        print("|cff00ff00[AttuneHelper]|r MainHand 2H weapons " .. (AttuneHelperDB["Allow MainHand 2H Weapons"] == 1 and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
+        local newValue = 1 - (AH.GetWeaponControlSetting("Allow MainHand 2H Weapons") or 0)
+        AH.SetWeaponControlSetting("Allow MainHand 2H Weapons", newValue)
+        print("|cff00ff00[AttuneHelper]|r MainHand 2H weapons " .. (newValue == 1 and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
         AH.ForceSaveSettings()
         return
     end
     
     if msg == "oh1h" then
-        AttuneHelperDB["Allow OffHand 1H Weapons"] = 1 - (AttuneHelperDB["Allow OffHand 1H Weapons"] or 0)
-        print("|cff00ff00[AttuneHelper]|r OffHand 1H weapons " .. (AttuneHelperDB["Allow OffHand 1H Weapons"] == 1 and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
+        local newValue = 1 - (AH.GetWeaponControlSetting("Allow OffHand 1H Weapons") or 0)
+        AH.SetWeaponControlSetting("Allow OffHand 1H Weapons", newValue)
+        print("|cff00ff00[AttuneHelper]|r OffHand 1H weapons " .. (newValue == 1 and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
         AH.ForceSaveSettings()
         return
     end
     
     if msg == "oh2h" then
-        AttuneHelperDB["Allow OffHand 2H Weapons"] = 1 - (AttuneHelperDB["Allow OffHand 2H Weapons"] or 0)
-        print("|cff00ff00[AttuneHelper]|r OffHand 2H weapons " .. (AttuneHelperDB["Allow OffHand 2H Weapons"] == 1 and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
+        local newValue = 1 - (AH.GetWeaponControlSetting("Allow OffHand 2H Weapons") or 0)
+        AH.SetWeaponControlSetting("Allow OffHand 2H Weapons", newValue)
+        print("|cff00ff00[AttuneHelper]|r OffHand 2H weapons " .. (newValue == 1 and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
         AH.ForceSaveSettings()
         return
     end
     
     if msg == "ohshield" then
-        AttuneHelperDB["Allow OffHand Shields"] = 1 - (AttuneHelperDB["Allow OffHand Shields"] or 0)
-        print("|cff00ff00[AttuneHelper]|r OffHand shields " .. (AttuneHelperDB["Allow OffHand Shields"] == 1 and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
+        local newValue = 1 - (AH.GetWeaponControlSetting("Allow OffHand Shields") or 0)
+        AH.SetWeaponControlSetting("Allow OffHand Shields", newValue)
+        print("|cff00ff00[AttuneHelper]|r OffHand shields " .. (newValue == 1 and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
         AH.ForceSaveSettings()
         return
     end
     
     if msg == "ohhold" then
-        AttuneHelperDB["Allow OffHand Holdables"] = 1 - (AttuneHelperDB["Allow OffHand Holdables"] or 0)
-        print("|cff00ff00[AttuneHelper]|r OffHand holdables " .. (AttuneHelperDB["Allow OffHand Holdables"] == 1 and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
+        local newValue = 1 - (AH.GetWeaponControlSetting("Allow OffHand Holdables") or 0)
+        AH.SetWeaponControlSetting("Allow OffHand Holdables", newValue)
+        print("|cff00ff00[AttuneHelper]|r OffHand holdables " .. (newValue == 1 and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
         AH.ForceSaveSettings()
         return
     end

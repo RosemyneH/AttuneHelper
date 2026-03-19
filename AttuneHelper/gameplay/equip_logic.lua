@@ -2,14 +2,19 @@
 local AH = _G.AttuneHelper
 local flags = AH.flags or {}
 
--- ʕ •ᴥ•ʔ✿ Create reusable tooltip for performance ✿ ʕ •ᴥ•ʔ
-local willBindScannerTooltip = nil
+AH.synastriaDataReady = (GetCustomGameData(41, 0) ~= 0)
 
 -- ʕ •ᴥ•ʔ✿ Recently equipped items tracking to prevent immediate re-equipping ✿ ʕ •ᴥ•ʔ
 local recentlyEquippedItems = {}
 local RECENTLY_EQUIPPED_TIMEOUT = 5.0 -- seconds
+local attunableListCache = {
+    generation = -1,
+    strict = nil,
+    timestamp = 0,
+    data = {}
+}
+local ATTUNABLE_LIST_CACHE_TTL = 0.5
 
--- ʕ •ᴥ•ʔ✿ GetItemInfo cache to prevent repeated expensive API calls ✿ ʕ •ᴥ•ʔ
 local itemInfoEquipCache = setmetatable({}, { __mode = "v" })
 local lastEquipCacheCleanup = 0
 local EQUIP_CACHE_CLEANUP_INTERVAL = 45
@@ -34,6 +39,30 @@ local function GetCachedItemInfoForEquip(itemLink)
     return cached and cached[1], cached and cached[2]
 end
 
+local function IsBaseVariantAttuned(itemId)
+    if not itemId then
+        return false
+    end
+
+    local hasBaseVariantFn = _G.HasAttunedVariantOfItem
+    if type(hasBaseVariantFn) == "function" then
+        local ok, result = pcall(hasBaseVariantFn, itemId, 0)
+        if ok then
+            return result == true or result == 1
+        end
+    end
+
+    local hasAnyVariantFn = _G.HasAttunedAnyVariantOfItem
+    if type(hasAnyVariantFn) == "function" then
+        local ok, result = pcall(hasAnyVariantFn, itemId)
+        if ok then
+            return result == true or result == 1
+        end
+    end
+
+    return false
+end
+
 ------------------------------------------------------------------------
 -- ʕ •ᴥ•ʔ✿ Weapon type checking functions ✿ ʕ •ᴥ•ʔ
 ------------------------------------------------------------------------
@@ -43,28 +72,28 @@ function AH.IsWeaponTypeAllowed(equipSlot, targetSlot)
     if targetSlot == "MainHandSlot" then
         -- Check 1H weapons
         if equipSlot == "INVTYPE_WEAPON" or equipSlot == "INVTYPE_WEAPONMAINHAND" then
-            return AttuneHelperDB["Allow MainHand 1H Weapons"] == 1
+            return AH.GetWeaponControlSetting("Allow MainHand 1H Weapons") == 1
         end
         -- Check 2H weapons
         if equipSlot == "INVTYPE_2HWEAPON" then
-            return AttuneHelperDB["Allow MainHand 2H Weapons"] == 1
+            return AH.GetWeaponControlSetting("Allow MainHand 2H Weapons") == 1
         end
     elseif targetSlot == "SecondaryHandSlot" then
         -- Check 1H weapons
         if equipSlot == "INVTYPE_WEAPON" or equipSlot == "INVTYPE_WEAPONOFFHAND" then
-            return AttuneHelperDB["Allow OffHand 1H Weapons"] == 1
+            return AH.GetWeaponControlSetting("Allow OffHand 1H Weapons") == 1
         end
         -- Check 2H weapons (unusual but possible in some custom servers)
         if equipSlot == "INVTYPE_2HWEAPON" then
-            return AttuneHelperDB["Allow OffHand 2H Weapons"] == 1
+            return AH.GetWeaponControlSetting("Allow OffHand 2H Weapons") == 1
         end
         -- Check shields
         if equipSlot == "INVTYPE_SHIELD" then
-            return AttuneHelperDB["Allow OffHand Shields"] == 1
+            return AH.GetWeaponControlSetting("Allow OffHand Shields") == 1
         end
         -- Check holdables
         if equipSlot == "INVTYPE_HOLDABLE" then
-            return AttuneHelperDB["Allow OffHand Holdables"] == 1
+            return AH.GetWeaponControlSetting("Allow OffHand Holdables") == 1
         end
     end
 
@@ -91,40 +120,14 @@ _G.GetWeaponTypeDisplayName = AH.GetWeaponTypeDisplayName
 ------------------------------------------------------------------------
 -- Policy check for whether an item should be auto-equipped
 ------------------------------------------------------------------------
-local ServerBagMap = {
-    [0] = 0xFF,
-    [1] = 0x13,
-    [2] = 0x14,
-    [3] = 0x15,
-    [4] = 0x16
-}
-local function NativeToServerBagSlot(nativeBag, nativeSlot)
-    if not nativeBag or not nativeSlot then return nil, nil end
-
-    if nativeBag == 0 then
-        return 0xFF, 22 + nativeSlot
-    end
-
-    local serverBag = ServerBagMap[nativeBag]
-    if serverBag then
-        return serverBag, nativeSlot - 1
-    end
-
-    return nil, nil
-end
-
-local function IsSoulboundFromNativeBagSlot(nativeBag, nativeSlot)
-    local serverBag, serverSlot = NativeToServerBagSlot(nativeBag, nativeSlot)
-    if not serverBag then return false end
-
-    local result = Custom_IsItemSoulbound(serverBag, serverSlot)
-    return result == true or result == 1
-end
-
 function AH.CanEquipItemPolicyCheck(candidateRec)
     if not candidateRec or not candidateRec.link then
-        AH.print_debug_general("CanEquipItemPolicyCheck: Invalid candidateRec")
+        --AH.print_debug_general("CanEquipItemPolicyCheck: Invalid candidateRec")
         return false
+    end
+
+    if not AH.synastriaDataReady and GetCustomGameData(41, 0) ~= 0 then
+        AH.synastriaDataReady = true
     end
 
     local itemLink = candidateRec.link
@@ -133,22 +136,34 @@ function AH.CanEquipItemPolicyCheck(candidateRec)
     local itemId = AH.GetItemIDFromLink(itemLink)
 
     local function IsBoEAndNotBound(itemLink, itemBag, itemSlotInBag)
-        local isSoulbound = IsSoulboundFromNativeBagSlot(itemBag, itemSlotInBag)
+        local isSoulbound = AH.IsSoulboundFromNativeBagSlot(itemBag, itemSlotInBag)
         --print("IsBoEAndNotBound", itemLink, itemBag, itemSlotInBag, isSoulbound)
         return not isSoulbound
     end
 
     local itemIsBoENotBound = IsBoEAndNotBound(itemLink, itemBag, itemSlotInBag)
     if itemId then
-        -- ʕ •ᴥ•ʔ✿ Check bounty status first for all items ✿ ʕ •ᴥ•ʔ
-        local isBountied = (_G.GetCustomGameData and (_G.GetCustomGameData(31, itemId) or 0) > 0) or false
-        if isBountied and itemIsBoENotBound then
-            if AttuneHelperDB["Equip BoE Bountied Items"] ~= 1 then
+        if itemIsBoENotBound then
+            if not AH.synastriaDataReady and AttuneHelperDB["Equip BoE Bountied Items"] ~= 1 then
+                return false
+            end
+
+            if AH.synastriaDataReady and GetCustomGameData(31, itemId) > 0 and AttuneHelperDB["Equip BoE Bountied Items"] ~= 1 then
                 return false
             end
         end
 
-        -- ʕ •ᴥ•ʔ✿ Check mythic BoE restrictions ✿ ʕ •ᴥ•ʔ
+        local shouldBlockBoe284Forged = (AttuneHelperDB["Disable Auto Equip 284 BoE Forges if Base Attuned"] == 1)
+        if shouldBlockBoe284Forged and itemIsBoENotBound then
+            local currentForgeLevel = AH.GetForgeLevelFromLink(itemLink)
+            if currentForgeLevel > AH.FORGE_LEVEL_MAP.BASE then
+                local _, _, _, iLvL = GetItemInfo(itemLink)
+                if iLvL == 284 and IsBaseVariantAttuned(itemId) then
+                    return false
+                end
+            end
+        end
+
         local isMythic = AH.IsMythic(itemId)
         if AttuneHelperDB["Disable Auto-Equip Mythic BoE"] == 1 and isMythic and itemIsBoENotBound then
             return false
@@ -190,8 +205,6 @@ function AH.performEquipAction(itemRecord, targetSlotID, currentSlotNameForActio
         return false
     end
 
-    local inCombat = InCombatLockdown()
-
     local itemLinkToEquip = itemRecord.link
     local itemEquipLocToEquip = itemRecord.equipSlot
     local sckEventsTemporarilyUnregistered = false
@@ -208,6 +221,7 @@ function AH.performEquipAction(itemRecord, targetSlotID, currentSlotNameForActio
         return false
     end
 
+    local didEquip = false
     local success, err = pcall(function()
         AH.lastAttemptedSlotForEquip = currentSlotNameForAction
         AH.lastAttemptedItemTypeForEquip = itemEquipLocToEquip
@@ -233,9 +247,7 @@ function AH.performEquipAction(itemRecord, targetSlotID, currentSlotNameForActio
                     -- If still on cursor, try manual StaticPopup confirmation
                     if CursorHasItem() then
                         StaticPopup_Show("EQUIP_BIND")
-                        -- Combat-aware delay handling
-                        local confirmDelay = inCombat and 0.05 or 0.1
-                        AH.Wait(confirmDelay, function()
+                        AH.Wait(0.05, function()
                             -- Find and click "Yes" button on any BoE popup
                             for i = 1, STATICPOPUP_NUMDIALOGS do
                                 local popup = _G["StaticPopup" .. i]
@@ -264,20 +276,7 @@ function AH.performEquipAction(itemRecord, targetSlotID, currentSlotNameForActio
             end
         end
 
-        -- ʕ •ᴥ•ʔ✿ Combat-specific retry logic ✿ ʕ •ᴥ•ʔ
-        local equipSuccess = attemptEquip()
-
-        if inCombat and not equipSuccess and CursorHasItem() then
-            -- During combat, try one more time with a slight delay
-            AH.Wait(0.1, function()
-                if CursorHasItem() then
-                    EquipCursorItem(targetSlotID)
-                    if CursorHasItem() then
-                        ClearCursor()
-                    end
-                end
-            end)
-        end
+        didEquip = attemptEquip()
 
         -- Clean up any remaining cursor items
         if CursorHasItem() then
@@ -290,33 +289,21 @@ function AH.performEquipAction(itemRecord, targetSlotID, currentSlotNameForActio
         _G["SCK"].frame:RegisterEvent('AUTOEQUIP_BIND_CONFIRM')
     end
 
-    if not success then
-
-        -- ʕ •ᴥ•ʔ✿ During combat, schedule a retry after a short delay ✿ ʕ •ᴥ•ʔ
-        if inCombat and AttuneHelperDB["Auto Equip Attunable After Combat"] == 1 then
-            AH.Wait(0.5, function()
-                -- Don't retry if we've left combat or if item was already equipped
-                if not InCombatLockdown() or (AH.sessionEquippedItems and AH.sessionEquippedItems[itemRecord.link]) then
-                    return
-                end
-                AH.performEquipAction(itemRecord, targetSlotID, currentSlotNameForAction)
-            end)
-        end
-    else
+    if didEquip then
         -- ʕ●ᴥ●ʔ✿ Mark item as equipped this session ✿ ʕ●ᴥ●ʔ
         if AH.sessionEquippedItems then
             AH.sessionEquippedItems[itemRecord.link] = true
         end
-        -- ʕ●ᴥ●ʔ✿ Refresh bag cache after successful equipment, with combat-aware delay ✿ ʕ●ᴥ●ʔ
-        if inCombat then
-            AH.Wait(0.1, function()
-                AH.RefreshAllBagCaches()
-            end)
-        else
+        if AH.RefreshAllBagCaches then
             AH.RefreshAllBagCaches()
         end
     end
-    return success
+
+    if not success then
+        return false
+    end
+
+    return didEquip == true
 end
 
 _G.performEquipAction = AH.performEquipAction
@@ -344,9 +331,18 @@ _G.HideEquipPopups = AH.HideEquipPopups
 -- Get list of qualifying items for tooltips/UI
 ------------------------------------------------------------------------
 function AH.GetAttunableItemNamesList()
+    local currentGeneration = AH.bagCacheGeneration or 0
+    local isStrictEquip = (AttuneHelperDB["EquipNewAffixesOnly"] == 1)
+    local now = GetTime()
+
+    if attunableListCache.generation == currentGeneration and
+       attunableListCache.strict == isStrictEquip and
+       (now - (attunableListCache.timestamp or 0)) < ATTUNABLE_LIST_CACHE_TTL then
+        return attunableListCache.data
+    end
+
     local itemData = {}
     if ItemLocIsLoaded() then
-        local isStrictEquip = (AttuneHelperDB["EquipNewAffixesOnly"] == 1)
         for _, bagTbl in pairs(AH.bagSlotCache) do
             if bagTbl then
                 for _, rec in pairs(bagTbl) do
@@ -373,6 +369,12 @@ function AH.GetAttunableItemNamesList()
             end
         end
     end
+
+    attunableListCache.generation = currentGeneration
+    attunableListCache.strict = isStrictEquip
+    attunableListCache.timestamp = now
+    attunableListCache.data = itemData
+
     return itemData
 end
 
@@ -386,24 +388,11 @@ function AH.EquipAllAttunables()
         return
     end
 
-    -- ʕ●ᴥ●ʔ✿ Combat lockdown handling - force bag cache refresh ✿ ʕ●ᴥ●ʔ
-    local inCombat = InCombatLockdown()
-    if inCombat then
-        if AH.RefreshAllBagCaches then
-            AH.RefreshAllBagCaches()
-        end
-        -- Small delay to ensure cache is current during combat
-        AH.Wait(0.1, function()
-        end)
-    end
-
     -- ʕ●ᴥ●ʔ✿ Session protection - prevent re-equipping same item multiple times ✿ ʕ●ᴥ●ʔ
     local sessionEquippedItems = {}
 
-    -- ʕ •ᴥ•ʔ✿ Only refresh if cache is stale (performance optimization) ✿ ʕ •ᴥ•ʔ
-    if not AH.lastBagCacheRefresh or (GetTime() - AH.lastBagCacheRefresh) > 1.0 then
+    if AH.RefreshAllBagCaches then
         AH.RefreshAllBagCaches()
-        AH.lastBagCacheRefresh = GetTime()
     end
 
     -- ʕ●ᴥ●ʔ✿ Smart slot targeting - only check slots with items that actually qualify ✿ ʕ●ᴥ●ʔ
@@ -439,13 +428,14 @@ function AH.EquipAllAttunables()
     end
 
     -- ʕ •ᴥ•ʔ✿ Check P3 (AHSet) candidates that exist and qualify ✿ ʕ •ᴥ•ʔ
-    for itemName, targetSlot in pairs(AHSetList) do
+    for setKey, targetSlot in pairs(AHSetList) do
         if targetSlot then
             -- Check if AHSet item exists in bags
             for _, bagTbl in pairs(AH.bagSlotCache) do
                 if bagTbl then
                     for _, rec in pairs(bagTbl) do
-                        if rec and rec.name == itemName and rec.inSet and AH.CanEquipItemPolicyCheck(rec) then
+                        local recIdentifier = rec and AH.CreateItemIdentifier(rec.link, rec.name)
+                        if rec and rec.inSet and (setKey == recIdentifier or setKey == rec.name) and AH.CanEquipItemPolicyCheck(rec) then
                             targetedSlots[targetSlot] = true
                             break
                         end
@@ -469,8 +459,6 @@ function AH.EquipAllAttunables()
 
     local twoHanderEquippedInMainHandThisEquipCycle = false
 
-    -- ʕ •ᴥ•ʔ✿ Use optimized combat detection and throttling ✿ ʕ •ᴥ•ʔ
-    local inCombat = AH.IsInCombatOptimized()
     local equipThrottle = AH.GetEquipThrottle()
 
     local function CanEquip2HInMainHandWithoutInterruptingOHAttunement()
@@ -606,20 +594,11 @@ function AH.EquipAllAttunables()
                         itemLink = rec.link,
                         type = "P2_Attunable"
                     }
-                    -- ʕ •ᴥ•ʔ✿ Track combat equip for performance monitoring ✿ ʕ •ᴥ•ʔ
                     AH.TrackCombatEquip()
                     if rec.equipSlot == "INVTYPE_2HWEAPON" and (slotName == "MainHandSlot" or slotName == "RangedSlot") then
                         twoHanderEquippedInMainHandThisEquipCycle = true
                     end
-                    -- ʕ●ᴥ●ʔ✿ Combat cooldown after successful equip ✿ ʕ●ᴥ●ʔ
-                    if inCombat then
-                        AH.Wait(equipThrottle, function() end)
-                    end
                     return -- Only equip one item per slot per cycle
-                elseif inCombat then
-                    -- ʕ●ᴥ●ʔ✿ Combat equip failed - note for potential retry ✿ ʕ●ᴥ●ʔ
-                    -- Small delay before trying next item in combat
-                    AH.Wait(equipThrottle, function() end)
                 end
             else
             end
@@ -696,20 +675,11 @@ function AH.EquipAllAttunables()
                                 itemLink = rec_set.link,
                                 type = "P3_AHSet"
                             }
-                            -- ʕ •ᴥ•ʔ✿ Track combat equip for performance monitoring ✿ ʕ •ᴥ•ʔ
                             AH.TrackCombatEquip()
                             if rec_set.equipSlot == "INVTYPE_2HWEAPON" and (slotName == "MainHandSlot" or slotName == "RangedSlot") then
                                 twoHanderEquippedInMainHandThisEquipCycle = true
                             end
-                            -- ʕ●ᴥ●ʔ✿ Combat cooldown after successful AHSet equip ✿ ʕ●ᴥ●ʔ
-                            if inCombat then
-                                AH.Wait(equipThrottle, function() end)
-                            end
                             return -- Exit after successful equip
-                        elseif inCombat then
-                            -- ʕ●ᴥ●ʔ✿ Combat AHSet equip failed - note for potential retry ✿ ʕ●ᴥ●ʔ
-                            -- Small delay before trying next AHSet item in combat
-                            AH.Wait(equipThrottle, function() end)
                         end
                     end
                 end
@@ -722,37 +692,115 @@ function AH.EquipAllAttunables()
         AH.Wait(equipThrottle * i, checkAndEquip, slotName_iter)
     end
 
-    -- ʕ●ᴥ●ʔ✿ Post-equip combat handling ✿ ʕ●ᴥ●ʔ
-    if inCombat then
-        local finalDelay = equipThrottle * (#slotsList + 2)
-
-        AH.Wait(finalDelay, function()
-            -- Force a final bag cache refresh in combat to ensure consistency
-            if AH.RefreshAllBagCaches then
-                AH.RefreshAllBagCaches()
-            end
-
-            -- If still in combat and auto-equip is enabled, schedule a gentle retry
-            if InCombatLockdown() and AttuneHelperDB["Auto Equip Attunable After Combat"] == 1 then
-                AH.Wait(3.0, function()
-                    if InCombatLockdown() then
-                        AH.TriggerThrottledAutoEquip(0.5)
-                    end
-                end)
-            end
-        end)
-    else
-        -- ʕ●ᴥ●ʔ✿ Non-combat final cache refresh ✿ ʕ●ᴥ●ʔ
-        local finalDelay = equipThrottle * (#slotsList + 1)
-        AH.Wait(finalDelay, function()
-            if AH.RefreshAllBagCaches then
-                AH.RefreshAllBagCaches()
-            end
-        end)
-    end
+    local finalDelay = equipThrottle * (#slotsList + 1)
+    AH.Wait(finalDelay, function()
+        if AH.RefreshAllBagCaches then
+            AH.RefreshAllBagCaches()
+        end
+    end)
 end
 
 _G.EquipAllAttunables = AH.EquipAllAttunables
+
+function AH.EquipAHSetOnly()
+    if AH.IsVendorWindowOpen and AH.IsVendorWindowOpen() then
+        return
+    end
+    if type(AHSetList) ~= "table" then
+        return
+    end
+
+    if AH.RefreshAllBagCaches then
+        AH.RefreshAllBagCaches()
+    end
+
+    local slotsList = {
+        "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot", "WristSlot", "HandsSlot",
+        "WaistSlot", "LegsSlot", "FeetSlot", "Finger0Slot", "Finger1Slot", "Trinket0Slot", "Trinket1Slot",
+        "MainHandSlot", "SecondaryHandSlot", "RangedSlot"
+    }
+
+    local function canCandidateEquipSlot(slotName, equipLoc, currentMHIs2H)
+        if slotName == "MainHandSlot" then
+            return equipLoc == "INVTYPE_WEAPON" or equipLoc == "INVTYPE_2HWEAPON" or equipLoc == "INVTYPE_WEAPONMAINHAND"
+        end
+        if slotName == "SecondaryHandSlot" then
+            if currentMHIs2H then
+                return false
+            end
+            return equipLoc == "INVTYPE_WEAPON" or
+                equipLoc == "INVTYPE_WEAPONOFFHAND" or
+                equipLoc == "INVTYPE_SHIELD" or
+                equipLoc == "INVTYPE_HOLDABLE"
+        end
+        if slotName == "RangedSlot" then
+            return AH.tContains({ "INVTYPE_RANGED", "INVTYPE_THROWN", "INVTYPE_RELIC", "INVTYPE_WAND", "INVTYPE_RANGEDRIGHT" }, equipLoc)
+        end
+        local unifiedCandidateSlot = AH.itemTypeToUnifiedSlot[equipLoc]
+        if type(unifiedCandidateSlot) == "string" then
+            return unifiedCandidateSlot == slotName
+        end
+        if type(unifiedCandidateSlot) == "table" then
+            return AH.tContains(unifiedCandidateSlot, slotName)
+        end
+        return false
+    end
+
+    local equipThrottle = AH.GetEquipThrottle and AH.GetEquipThrottle() or 0.1
+    local equipCount = 0
+    local foundAnyAHSetCandidate = false
+
+    for i, slotName in ipairs(slotsList) do
+        AH.Wait(equipThrottle * i, function(targetSlot)
+            local invSlotID = GetInventorySlotInfo(targetSlot)
+            if not invSlotID then
+                return
+            end
+            local eqID = AH.slotNumberMapping[targetSlot] or invSlotID
+
+            local currentMHLink = GetInventoryItemLink("player", GetInventorySlotInfo("MainHandSlot"))
+            local currentMHIs2H = false
+            if currentMHLink then
+                local _, currentMHEquipLoc = GetItemInfo(currentMHLink)
+                currentMHIs2H = (currentMHEquipLoc == "INVTYPE_2HWEAPON")
+            end
+
+            local chosenCandidate = nil
+            for _, bagTbl in pairs(AH.bagSlotCache or {}) do
+                if bagTbl then
+                    for _, rec in pairs(bagTbl) do
+                        local identifier = rec and AH.CreateItemIdentifier(rec.link, rec.name)
+                        local designatedSlot = rec and (AHSetList[identifier] or AHSetList[rec.name])
+                        if rec and designatedSlot == targetSlot and canCandidateEquipSlot(targetSlot, rec.equipSlot, currentMHIs2H) then
+                            chosenCandidate = rec
+                            foundAnyAHSetCandidate = true
+                            break
+                        end
+                    end
+                end
+                if chosenCandidate then
+                    break
+                end
+            end
+
+            if chosenCandidate and AH.performEquipAction(chosenCandidate, eqID, targetSlot) then
+                equipCount = equipCount + 1
+            end
+        end, slotName)
+    end
+
+    AH.Wait(equipThrottle * (#slotsList + 1), function()
+        if not foundAnyAHSetCandidate then
+            print("|cffffd200[AttuneHelper]|r No AHSet items found in your bags.")
+            return
+        end
+        if equipCount == 0 then
+            print("|cffffd200[AttuneHelper]|r AHSet equip attempted, but no items were equipped.")
+        else
+            print("|cffffd200[AttuneHelper]|r Equipped " .. tostring(equipCount) .. " AHSet item(s).")
+        end
+    end)
+end
 
 ------------------------------------------------------------------------
 -- Sort inventory functionality
@@ -822,33 +870,13 @@ function AH.SortInventoryItems()
         end
 
         -- Check 4: Must not be in AHSet list
-        if AHSetList and AHSetList[itemName] then
+        local setIdentifier = AH.CreateItemIdentifier(itemLink, itemName)
+        if AHSetList and (AHSetList[setIdentifier] or AHSetList[itemName]) then
             return false, "In AHSet list"
         end
 
         -- Check 5: Must be soulbound
-        local isSoulbound = false
-        local tooltip = CreateFrame("GameTooltip", "AttuneHelperDisenchantBoundScan", UIParent, "GameTooltipTemplate")
-        tooltip:SetOwner(UIParent, "ANCHOR_NONE")
-
-        if bag and slot then
-            tooltip:SetBagItem(bag, slot)
-        else
-            tooltip:SetHyperlink(itemLink)
-        end
-
-        for i = 1, tooltip:NumLines() do
-            local line = _G["AttuneHelperDisenchantBoundScanTextLeft" .. i]
-            if line then
-                local text = line:GetText()
-                if text and string.find(text, ITEM_SOULBOUND, 1, true) then
-                    isSoulbound = true
-                    break
-                end
-            end
-        end
-        tooltip:Hide()
-
+        local isSoulbound = AH.IsSoulboundFromNativeBagSlot(bag, slot)
         if not isSoulbound then
             return false, "Not soulbound"
         end
@@ -860,12 +888,11 @@ function AH.SortInventoryItems()
             if type(progressResult) == "number" then
                 progress = progressResult
             else
-                AH.print_debug_general("IsReadyForDisenchant: GetItemLinkAttuneProgress returned non-number for " ..
-                    itemLink .. ": " .. tostring(progressResult))
+
                 return false, "Cannot determine attunement progress"
             end
         else
-            AH.print_debug_general("IsReadyForDisenchant: GetItemLinkAttuneProgress API not available for " .. itemLink)
+            --AH.print_debug_general("IsReadyForDisenchant: GetItemLinkAttuneProgress API not available for " .. itemLink)
             return false, "Attunement API not available"
         end
 
@@ -913,14 +940,11 @@ function AH.SortInventoryItems()
                         if not isReady then
                             -- Non-disenchant-ready items in target bag (need to move out)
                             table.insert(availableTargetSlots, s)
-                            AH.print_debug_general("Target " ..
-                                targetBagName .. " item '" .. name .. "' will be moved out: " .. reason)
                         else
                             -- Disenchant-ready items already in target bag (leave them)
                             table.insert(readyForDisenchant,
                                 { b = b, s = s, id = id, name = name, link = link, alreadyInTarget = true })
-                            AH.print_debug_general("Target " ..
-                                targetBagName .. " item '" .. name .. "' is ready for disenchant and staying in place")
+
                         end
                     else
                         -- Items in other bags
@@ -928,9 +952,9 @@ function AH.SortInventoryItems()
                             -- Items ready for disenchanting (need to move to target bag)
                             table.insert(readyForDisenchant,
                                 { b = b, s = s, id = id, name = name, link = link, fromBank = (b >= 5) })
-                            AH.print_debug_general("Found disenchant-ready item in bag " .. b .. ": " .. name)
+                            --AH.print_debug_general("Found disenchant-ready item in bag " .. b .. ": " .. name)
                         else
-                            AH.print_debug_general("Item '" .. name .. "' not ready for disenchant: " .. reason)
+                            --AH.print_debug_general("Item '" .. name .. "' not ready for disenchant: " .. reason)
                         end
                     end
                 end
@@ -1037,6 +1061,152 @@ end
 ------------------------------------------------------------------------
 -- Update AHSet to current equiped items functionality
 ------------------------------------------------------------------------
+function AH.AssignItemToAHSetSlot(identifier, itemName, targetSlotName)
+    if not identifier or not itemName or not targetSlotName then
+        return false
+    end
+    if type(AHSetList) ~= "table" then
+        AHSetList = {}
+    end
+
+    -- Remove old mapping for this item.
+    AHSetList[identifier] = nil
+    AHSetList[itemName] = nil
+
+    -- Keep only one AHSet item per slot by removing previous occupant(s).
+    for setKey, assignedSlot in pairs(AHSetList) do
+        if assignedSlot == targetSlotName then
+            AHSetList[setKey] = nil
+        end
+    end
+
+    AHSetList[identifier] = targetSlotName
+    print("|cffffd200[AttuneHelper]|r '" .. itemName .. "' added to AHSet, designated for slot " .. targetSlotName .. ".")
+
+    for i = 0, 4 do
+        AH.UpdateBagCache(i)
+    end
+    if AH.RebuildEquipSlotCache then
+        AH.RebuildEquipSlotCache()
+    end
+    AH.UpdateItemCountText()
+    return true
+end
+
+local function GetAHSetSlotChoiceLabels(itemEquipLoc, slot1, slot2)
+    if itemEquipLoc == "INVTYPE_FINGER" then
+        return "Ring 1", "Ring 2"
+    end
+    if itemEquipLoc == "INVTYPE_TRINKET" then
+        return "Trinket 1", "Trinket 2"
+    end
+    if itemEquipLoc == "INVTYPE_WEAPON" then
+        return "Main Hand", "Off Hand"
+    end
+
+    local fallbackLabels = {
+        MainHandSlot = "Main Hand",
+        SecondaryHandSlot = "Off Hand",
+        Finger0Slot = "Ring 1",
+        Finger1Slot = "Ring 2",
+        Trinket0Slot = "Trinket 1",
+        Trinket1Slot = "Trinket 2"
+    }
+    return fallbackLabels[slot1] or slot1, fallbackLabels[slot2] or slot2
+end
+
+local function EnsureAHSetSlotChoicePopup()
+    if StaticPopupDialogs["ATTUNEHELPER_AHSET_SLOT_CHOICE"] then
+        return
+    end
+
+    StaticPopupDialogs["ATTUNEHELPER_AHSET_SLOT_CHOICE"] = {
+        text = "%s",
+        button1 = "Option 1",
+        button2 = "Option 2",
+        OnShow = function(self, data)
+            if data and self.button1 and self.button2 then
+                self.button1:SetText(data.slotLabel1 or "Option 1")
+                self.button2:SetText(data.slotLabel2 or "Option 2")
+            end
+        end,
+        OnAccept = function(_, data)
+            if data and data.identifier and data.itemName and data.slot1 then
+                AH.AssignItemToAHSetSlot(data.identifier, data.itemName, data.slot1)
+            end
+        end,
+        OnCancel = function(_, data, reason)
+            if reason == "clicked" and data and data.identifier and data.itemName and data.slot2 then
+                AH.AssignItemToAHSetSlot(data.identifier, data.itemName, data.slot2)
+            end
+        end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3
+    }
+end
+
+function AH.AddCursorItemToAHSet()
+    if not CursorHasItem() then
+        return false
+    end
+    if type(AHSetList) ~= "table" then
+        AHSetList = {}
+    end
+
+    local cursorType, cursorID, cursorLink = GetCursorInfo()
+    if cursorType ~= "item" then
+        return false
+    end
+
+    local itemLink = cursorLink or (cursorID and ("item:" .. tostring(cursorID))) or nil
+    local itemName, _, _, _, _, _, _, _, itemEquipLoc = GetItemInfo(itemLink or cursorID)
+    if not itemName then
+        print("|cffff0000[AttuneHelper]|r Could not read dragged item.")
+        return false
+    end
+
+    local identifier = AH.CreateItemIdentifier(itemLink, itemName)
+    local unifiedSlot = AH.itemTypeToUnifiedSlot and AH.itemTypeToUnifiedSlot[itemEquipLoc] or nil
+
+    if type(unifiedSlot) == "table" then
+        local slot1 = unifiedSlot[1]
+        local slot2 = unifiedSlot[2]
+        if not slot1 or not slot2 then
+            print("|cffff0000[AttuneHelper]|r Could not determine a unique slot for '" .. itemName .. "'. Use /ahset with a slot.")
+            return false
+        end
+
+        local slotLabel1, slotLabel2 = GetAHSetSlotChoiceLabels(itemEquipLoc, slot1, slot2)
+        EnsureAHSetSlotChoicePopup()
+        ClearCursor()
+        StaticPopup_Show(
+            "ATTUNEHELPER_AHSET_SLOT_CHOICE",
+            string.format("Choose AHSet slot for '%s':", itemName),
+            nil,
+            {
+                identifier = identifier,
+                itemName = itemName,
+                slot1 = slot1,
+                slot2 = slot2,
+                slotLabel1 = slotLabel1,
+                slotLabel2 = slotLabel2
+            }
+        )
+        return true
+    end
+
+    if type(unifiedSlot) ~= "string" then
+        print("|cffff0000[AttuneHelper]|r Could not determine a unique slot for '" .. itemName .. "'. Use /ahset with a slot.")
+        return false
+    end
+
+    AH.AssignItemToAHSetSlot(identifier, itemName, unifiedSlot)
+    ClearCursor()
+    return true
+end
+
 function AH.SetAHSetToEquipped()
     AHSetList = {}
     print("|cffffd200[AttuneHelper]|r Deleted previous AHSetList Items.")
@@ -1077,61 +1247,21 @@ end
 
 -- ʕ •ᴥ•ʔ✿ Enhanced combat performance optimizations ✿ ʕ •ᴥ•ʔ
 AH.combatPerformance = AH.combatPerformance or {
-    lastCombatCheck = 0,
-    combatThrottle = 0.5,  -- Reduced from 1.0s to 0.5s
-    nonCombatThrottle = 0.1, -- Reduced from 0.2s to 0.1s
-    maxCombatEquips = 3,    -- Maximum equips per combat cycle
-    combatEquipCount = 0,
-    lastCombatEquipTime = 0
+    throttle = 0.1
 }
 
--- Enhanced combat detection with caching
 function AH.IsInCombatOptimized()
-    local currentTime = GetTime()
-    if currentTime - AH.combatPerformance.lastCombatCheck > 0.1 then
-        AH.combatPerformance.lastCombatCheck = currentTime
-        AH.combatPerformance.inCombat = UnitAffectingCombat("player")
-    end
-    return AH.combatPerformance.inCombat
+    return InCombatLockdown()
 end
 
--- Enhanced equip throttling for combat
 function AH.GetEquipThrottle()
-    if AH.IsInCombatOptimized() then
-        return AH.combatPerformance.combatThrottle
-    else
-        return AH.combatPerformance.nonCombatThrottle
-    end
+    return AH.combatPerformance.throttle or 0.1
 end
 
--- Combat-aware equip tracking
 function AH.TrackCombatEquip()
-    local currentTime = GetTime()
-    AH.combatPerformance.combatEquipCount = AH.combatPerformance.combatEquipCount + 1
-    AH.combatPerformance.lastCombatEquipTime = currentTime
-    
-    -- Reset counter if not in combat
-    if not AH.IsInCombatOptimized() then
-        AH.combatPerformance.combatEquipCount = 0
-    end
+    return
 end
 
--- Check if we should skip equip due to combat limits
 function AH.ShouldSkipCombatEquip()
-    if not AH.IsInCombatOptimized() then return false end
-    
-    local currentTime = GetTime()
-    local timeSinceLastEquip = currentTime - AH.combatPerformance.lastCombatEquipTime
-    
-    -- Skip if we've hit the combat equip limit
-    if AH.combatPerformance.combatEquipCount >= AH.combatPerformance.maxCombatEquips then
-        return true
-    end
-    
-    -- Skip if we're still in the throttle period
-    if timeSinceLastEquip < AH.combatPerformance.combatThrottle then
-        return true
-    end
-    
     return false
 end

@@ -6,6 +6,7 @@
 AHIgnoreList = AHIgnoreList or {}
 AHSetList = AHSetList or {} -- Now stores itemName = "TargetSlotName"
 AttuneHelperDB = AttuneHelperDB or {}
+AHCharSettings = AHCharSettings or {}
 
 -- Get reference to the modular addon table
 local AH = _G.AttuneHelper
@@ -25,6 +26,7 @@ if AH then
     _G.GetForgeLevelFromLink = AH.GetForgeLevelFromLink
     _G.tContains = AH.tContains
     _G.AH_wait = AH.Wait
+    _G.RequestUpdateList = AH.RequestUpdateList
 
     -- Bag and item functions (from gameplay modules)
     _G.UpdateBagCache = AH.UpdateBagCache
@@ -91,12 +93,14 @@ if AH then
 				_G.ToggleAutoEquipButton = AH.UI.buttons.toggleAutoEquip
 				_G.SettingsButton = AH.UI.buttons.openSettings
 				_G.SortInventoryButton = AH.UI.buttons.sort
+				_G.EquipAHSetButton = AH.UI.buttons.equipAHSet
 				_G.AttuneHelperEquipAllButton =  AH.UI.buttons.equipAll
 				_G.AttuneHelperAHSetUpdateButton = AH.UI.buttons.AHSetUpdate
 				_G.AttuneHelperVendorAttunedButton = AH.UI.buttons.vendor
 				_G.AttuneHelperToggleAutoEquipButton = AH.UI.buttons.toggleAutoEquip
 				_G.AttuneHelperSettingsButton = AH.UI.buttons.openSettings
 				_G.AttuneHelperSortInventoryButton = AH.UI.buttons.sort
+				_G.AttuneHelperEquipAHSetButton = AH.UI.buttons.equipAHSet
             end
             
             if AH.UI.miniButtons then
@@ -107,6 +111,7 @@ if AH then
 				_G.AttuneHelperMiniToggleAutoEquipButton = AH.UI.miniButtons.toggleAutoEquip
 				_G.AttuneHelperMiniSettingsButton = AH.UI.miniButtons.openSettings
                 _G.AttuneHelperMiniSortButton = AH.UI.miniButtons.sort
+                _G.AttuneHelperMiniEquipAHSetButton = AH.UI.miniButtons.equipAHSet
             end
             
             if AH.UI.itemCountText then

@@ -8,6 +8,26 @@ local function IsRightClickDragEnabled()
     return AttuneHelperDB and AttuneHelperDB["Draggable by Right Click"] == 1
 end
 
+local function IsAHFrameLocked()
+    return AttuneHelperDB and AttuneHelperDB["Lock AH in Place (Buttons Only Mouse)"] == 1
+end
+
+function AH.ApplyFrameInteractivity()
+    local locked = IsAHFrameLocked()
+    local frames = { AH.UI and AH.UI.mainFrame, AH.UI and AH.UI.miniFrame }
+
+    for _, frame in ipairs(frames) do
+        if frame then
+            frame:SetMovable(not locked)
+            frame:EnableMouse(not locked)
+        end
+    end
+
+    if locked and AH.UI and AH.UI.activeRightDragFrame then
+        AH.StopRightClickDrag()
+    end
+end
+
 function AH.ResolveDragTarget(widget)
     local current = widget
     while current do
@@ -93,7 +113,12 @@ _G.themePaths = AH.themePaths
 ------------------------------------------------------------------------
 function AH.CreateMainFrame()
     print("|cff00ff00[AttuneHelper]|r Creating main frame...")
-    local frame = CreateFrame("Frame", "AttuneHelperFrame", UIParent)
+    local frame = _G.AttuneHelperFrame
+    if not frame then
+        frame = CreateFrame("Frame", "AttuneHelperFrame", UIParent)
+    elseif frame:GetParent() ~= UIParent then
+        frame:SetParent(UIParent)
+    end
     frame:SetSize(185, 125)
 
     -- Position restoration
@@ -104,7 +129,7 @@ function AH.CreateMainFrame()
                 frame:SetPoint(pos[1], UIParent, pos[3], pos[4], pos[5])
             end)
             if not success then
-                AH.print_debug_general("Failed to restore frame position, using default: " .. tostring(err))
+                --AH.print_debug_general("Failed to restore frame position, using default: " .. tostring(err))
                 frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
                 AttuneHelperDB.FramePosition = { "CENTER", UIParent, "CENTER", 0, 0 }
             end
@@ -133,12 +158,15 @@ function AH.CreateMainFrame()
         AH.SaveFramePosition(s)
     end)
 
-    frame:HookScript("OnMouseDown", function(s, mouseButton)
-        AH.StartRightClickDragFromWidget(s, mouseButton)
-    end)
-    frame:HookScript("OnMouseUp", function(_, mouseButton)
-        AH.StopRightClickDrag(mouseButton)
-    end)
+    if not frame.AHRightClickDragHooksAdded then
+        frame:HookScript("OnMouseDown", function(s, mouseButton)
+            AH.StartRightClickDragFromWidget(s, mouseButton)
+        end)
+        frame:HookScript("OnMouseUp", function(_, mouseButton)
+            AH.StopRightClickDrag(mouseButton)
+        end)
+        frame.AHRightClickDragHooksAdded = true
+    end
 
     -- Initial backdrop setup
     frame:SetBackdrop({
@@ -154,9 +182,14 @@ function AH.CreateMainFrame()
     frame:SetBackdropBorderColor(0.4, 0.4, 0.4)
 
     -- Create item count text
-    local itemCountText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local itemCountText = _G.AttuneHelperItemCountText
+    if not itemCountText then
+        itemCountText = frame:CreateFontString("AttuneHelperItemCountText", "OVERLAY", "GameFontNormal")
+    elseif itemCountText:GetParent() ~= frame then
+        itemCountText:SetParent(frame)
+    end
     itemCountText:SetPoint("BOTTOM", 0, 6)
-    itemCountText:SetFont("Fonts\\FRIZQT__.TTF", 13, "OUTLINE")
+    itemCountText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
     itemCountText:SetTextColor(1, 1, 1, 1)
     itemCountText:SetText("Attunables in Inventory: 0")
 
@@ -174,6 +207,8 @@ function AH.CreateMainFrame()
     if AttuneHelperDB["Mini Mode"] ~= 1 then
         frame:Show()
     end
+
+    AH.ApplyFrameInteractivity()
     
     return frame
 end
@@ -183,17 +218,41 @@ end
 ------------------------------------------------------------------------
 function AH.ApplyButtonTheme(theme)
     if not AH.themePaths[theme] then return end
-    if AH.UI.mainFrame and AH.UI.mainFrame:IsShown() then
-        local btns = {
-            _G.AttuneHelperSortInventoryButton,
-            _G.AttuneHelperEquipAllButton,
-            _G.AttuneHelperVendorAttunedButton
-        }
-        for _, b in ipairs(btns) do
+    local x1, y1, x2, y2 = 65, 176, 457, 290
+    local u1, u2, v1, v2 = x1 / 512, x2 / 512, y1 / 512, y2 / 512
+    local btns = {}
+
+    if AH.UI and AH.UI.buttons then
+        for _, b in pairs(AH.UI.buttons) do
             if b then
-                b:SetNormalTexture(AH.themePaths[theme].normal)
-                b:SetPushedTexture(AH.themePaths[theme].pushed)
-                b:SetHighlightTexture(AH.themePaths[theme].pushed, "ADD")
+                table.insert(btns, b)
+            end
+        end
+    end
+
+    if #btns == 0 then
+        btns = {
+            _G.AttuneHelperEquipAllButton,
+            _G.AttuneHelperOpenSettingsButton,
+            _G.AttuneHelperVendorAttunedButton,
+            _G.AttuneHelperToggleAutoEquipButton,
+            _G.AttuneHelperAHSetUpdateButton,
+            _G.AttuneHelperSortInventoryButton,
+            _G.AttuneHelperEquipAHSetButton
+        }
+    end
+
+    for _, b in ipairs(btns) do
+        if b then
+            b:SetNormalTexture(AH.themePaths[theme].normal)
+            b:SetPushedTexture(AH.themePaths[theme].pushed)
+            b:SetHighlightTexture(AH.themePaths[theme].pushed, "ADD")
+
+            for _, st in ipairs({"Normal", "Pushed", "Highlight"}) do
+                local tx = b["Get" .. st .. "Texture"](b)
+                if tx then
+                    tx:SetTexCoord(u1, u2, v1, v2)
+                end
             end
         end
     end
@@ -233,6 +292,18 @@ function AH.UpdateDisplayMode()
         AH.UpdateItemCountText()
     end
     AH.ApplyButtonTheme(AttuneHelperDB["Button Theme"])
+    if AH.UpdateModifierButtonVisibility then
+        AH.UpdateModifierButtonVisibility()
+    end
+    if AH.ApplyFrameInteractivity then
+        AH.ApplyFrameInteractivity()
+    end
+end
+
+function AH.IsDisplayVisible()
+    local mainShown = AH.UI and AH.UI.mainFrame and AH.UI.mainFrame:IsShown()
+    local miniShown = AH.UI and AH.UI.miniFrame and AH.UI.miniFrame:IsShown()
+    return mainShown or miniShown
 end
 
 -- Export for legacy compatibility

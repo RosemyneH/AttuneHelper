@@ -5,7 +5,12 @@ local AH = _G.AttuneHelper
 -- Mini frame creation and setup
 ------------------------------------------------------------------------
 function AH.CreateMiniFrame()
-    local frame = CreateFrame("Frame", "AttuneHelperMiniFrame", UIParent)
+    local frame = _G.AttuneHelperMiniFrame
+    if not frame then
+        frame = CreateFrame("Frame", "AttuneHelperMiniFrame", UIParent)
+    elseif frame:GetParent() ~= UIParent then
+        frame:SetParent(UIParent)
+    end
     frame:SetSize(88, 32)
 
     -- Position restoration
@@ -16,7 +21,7 @@ function AH.CreateMiniFrame()
                 frame:SetPoint(pos[1], UIParent, pos[3], pos[4], pos[5])
             end)
             if not success then
-                AH.print_debug_general("Failed to restore mini frame position, using default: " .. tostring(err))
+                --AH.print_debug_general("Failed to restore mini frame position, using default: " .. tostring(err))
                 frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
                 AttuneHelperDB.MiniFramePosition = { "CENTER", UIParent, "CENTER", 0, 0 }
             end
@@ -45,12 +50,15 @@ function AH.CreateMiniFrame()
         AH.SaveFramePosition(s)
     end)
 
-    frame:HookScript("OnMouseDown", function(s, mouseButton)
-        AH.StartRightClickDragFromWidget(s, mouseButton)
-    end)
-    frame:HookScript("OnMouseUp", function(_, mouseButton)
-        AH.StopRightClickDrag(mouseButton)
-    end)
+    if not frame.AHRightClickDragHooksAdded then
+        frame:HookScript("OnMouseDown", function(s, mouseButton)
+            AH.StartRightClickDragFromWidget(s, mouseButton)
+        end)
+        frame:HookScript("OnMouseUp", function(_, mouseButton)
+            AH.StopRightClickDrag(mouseButton)
+        end)
+        frame.AHRightClickDragHooksAdded = true
+    end
 
     -- Setup backdrop
     frame:SetBackdrop({
@@ -74,6 +82,10 @@ function AH.CreateMiniFrame()
 
     -- Store reference
     AH.UI.miniFrame = frame
+
+    if AH.ApplyFrameInteractivity then
+        AH.ApplyFrameInteractivity()
+    end
 
     -- Export for legacy compatibility
     _G.AttuneHelperMiniFrame = frame

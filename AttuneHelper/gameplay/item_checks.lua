@@ -6,7 +6,7 @@ local AH = _G.AttuneHelper
 ------------------------------------------------------------------------
 function AH.ItemIsActivelyLeveling(itemId, itemLink)
     if not itemLink then
-        AH.print_debug_general("ItemIsActivelyLeveling: itemLink required. ItemId="..tostring(itemId))
+        --AH.print_debug_general("ItemIsActivelyLeveling: itemLink required. ItemId="..tostring(itemId))
         return false
     end
     if not itemId then itemId = AH.GetItemIDFromLink(itemLink) end
@@ -18,13 +18,13 @@ function AH.ItemIsActivelyLeveling(itemId, itemLink)
     end
 
     if not _G.GetItemLinkAttuneProgress then
-        AH.print_debug_general("ItemIsActivelyLeveling: GetItemLinkAttuneProgress missing for "..itemLink)
+        --AH.print_debug_general("ItemIsActivelyLeveling: GetItemLinkAttuneProgress missing for "..itemLink)
         return false
     end
 
     local progress = GetItemLinkAttuneProgress(itemLink)
     if type(progress) ~= "number" then
-        AH.print_debug_general("ItemIsActivelyLeveling: progress not number for "..itemLink.." -> "..tostring(progress))
+        --AH.print_debug_general("ItemIsActivelyLeveling: progress not number for "..itemLink.." -> "..tostring(progress))
         return false
     end
 
@@ -52,12 +52,25 @@ function AH.ItemQualifiesForBagEquip(itemId, itemLink, isEquipNewAffixesOnlyEnab
     local currentForgeLevel = AH.GetForgeLevelFromLink(itemLink)
 
     if isEquipNewAffixesOnlyEnabled then
+        local minForge = AttuneHelperDB["AffixOnlyMinForgeLevel"]
+        if type(minForge) ~= "number" then
+            minForge = AH.FORGE_LEVEL_MAP.WARFORGED
+        end
+
+        -- If minForge is set, lower forge tiers are lenient.
+        if minForge >= 0 and currentForgeLevel < minForge then
+            return true
+        end
+
         local hasAnyVariant = true
         if _G.HasAttunedAnyVariantOfItem then
             hasAnyVariant = HasAttunedAnyVariantOfItem(itemId)
         end
         if not hasAnyVariant then return true end -- no variant attuned yet
-        return currentForgeLevel > AH.FORGE_LEVEL_MAP.BASE -- higher forge override
+
+        -- Once a variant exists, only higher forge tiers can override strict mode.
+        local strictBoundary = (minForge >= 0) and minForge or AH.FORGE_LEVEL_MAP.BASE
+        return currentForgeLevel > strictBoundary
     end
 
     return true -- lenient mode
