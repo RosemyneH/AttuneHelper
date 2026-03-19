@@ -52,21 +52,25 @@ function AH.ItemQualifiesForBagEquip(itemId, itemLink, isEquipNewAffixesOnlyEnab
     local currentForgeLevel = AH.GetForgeLevelFromLink(itemLink)
 
     if isEquipNewAffixesOnlyEnabled then
-        local minForge = AttuneHelperDB["AffixOnlyMinForgeLevel"]
-        if type(minForge) ~= "number" then
-            minForge = AH.FORGE_LEVEL_MAP.WARFORGED
-        end
+        local minForge = AttuneHelperDB["AffixOnlyMinForgeLevel"] or AH.FORGE_LEVEL_MAP.WARFORGED
 
         -- If minForge is set, lower forge tiers are lenient.
         if minForge >= 0 and currentForgeLevel < minForge then
             return true
         end
 
-        local hasAnyVariant = true
-        if _G.HasAttunedAnyVariantOfItem then
-            hasAnyVariant = HasAttunedAnyVariantOfItem(itemId)
+        local hasAttunedThresholdVariant = false
+        local hasAttunedAnyVariantEx = _G.HasAttunedAnyVariantEx
+        if hasAttunedAnyVariantEx then
+            local result = hasAttunedAnyVariantEx(itemId, minForge)
+            hasAttunedThresholdVariant = (result == true or result == 1)
+        elseif _G.HasAttunedAnyVariantOfItem then
+            -- ʕ •ᴥ•ʔ✿ Fallback when Ex API is unavailable ✿ ʕ •ᴥ•ʔ
+            hasAttunedThresholdVariant = HasAttunedAnyVariantOfItem(itemId) and true or false
         end
-        if not hasAnyVariant then return true end -- no variant attuned yet
+        if not hasAttunedThresholdVariant then
+            return true
+        end -- threshold tier not attuned yet
 
         -- Once a variant exists, only higher forge tiers can override strict mode.
         local strictBoundary = (minForge >= 0) and minForge or AH.FORGE_LEVEL_MAP.BASE
