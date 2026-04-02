@@ -9,6 +9,7 @@ AH.button_layout_option_controls = {}
 AH.forge_type_checkboxes = {}
 AH.forge_option_controls = {}
 AH.weapon_control_checkboxes = {}
+AH.list_management_controls = {}
 
 -- Export for legacy compatibility
 _G.blacklist_checkboxes = AH.blacklist_checkboxes
@@ -18,6 +19,174 @@ _G.button_layout_option_controls = AH.button_layout_option_controls
 _G.forge_type_checkboxes = AH.forge_type_checkboxes
 _G.forge_option_controls = AH.forge_option_controls
 _G.weapon_control_checkboxes = AH.weapon_control_checkboxes
+_G.list_management_controls = AH.list_management_controls
+
+local function BuildSortedKeyList(sourceTable, filterFn)
+    local entries = {}
+    if type(sourceTable) ~= "table" then
+        return entries
+    end
+
+    for key, value in pairs(sourceTable) do
+        if value and (not filterFn or filterFn(key, value)) then
+            table.insert(entries, key)
+        end
+    end
+
+    table.sort(entries, function(a, b)
+        return tostring(a):lower() < tostring(b):lower()
+    end)
+    return entries
+end
+
+local function GetAHIgnoreEntries()
+    return BuildSortedKeyList(AHIgnoreList)
+end
+
+local function GetAlwaysVendorEntries()
+    return BuildSortedKeyList(AHVendorList)
+end
+
+local function GetAHSetEntries()
+    local entries = {}
+    if type(AHSetList) ~= "table" then
+        return entries
+    end
+
+    for key, targetSlot in pairs(AHSetList) do
+        if targetSlot then
+            table.insert(entries, { key = key, value = targetSlot })
+        end
+    end
+
+    table.sort(entries, function(a, b)
+        return tostring(a.key):lower() < tostring(b.key):lower()
+    end)
+    return entries
+end
+
+local function FormatListEntryLabel(listType, entry)
+    if listType == "ahset" then
+        local itemKey = type(entry) == "table" and entry.key or entry
+        local slotName = type(entry) == "table" and entry.value or nil
+        return string.format("%s  ->  %s", tostring(itemKey), tostring(slotName or ""))
+    end
+    return tostring(entry)
+end
+
+local function RemoveListEntry(listType, entry)
+    if listType == "ahset" then
+        if type(entry) == "table" and entry.key then
+            AHSetList[entry.key] = nil
+        end
+    elseif listType == "ignore" then
+        AHIgnoreList[entry] = nil
+        if AH.InvalidateVendorListCache then
+            AH.InvalidateVendorListCache()
+        end
+    elseif listType == "vendor" then
+        AHVendorList[entry] = nil
+        if AH.InvalidateVendorListCache then
+            AH.InvalidateVendorListCache()
+        end
+    end
+
+    if AH.ForceSaveSettings then
+        AH.ForceSaveSettings()
+    end
+    if AH.RefreshListManagementPanel then
+        AH.RefreshListManagementPanel()
+    end
+end
+
+local function CreateManagedListSection(parent, titleText, topAnchor, listType, entryProvider)
+    local section = CreateFrame("Frame", nil, parent)
+    section:SetWidth(540)
+    section:SetHeight(150)
+    section:SetPoint("TOPLEFT", topAnchor, "BOTTOMLEFT", 0, -18)
+
+    local title = section:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    title:SetPoint("TOPLEFT", 0, 0)
+    title:SetText(titleText)
+
+    local baseName = string.format("%s%s", parent:GetName() or "AttuneHelperListManagementPanel", listType or "Section")
+    local scrollFrame = CreateFrame("ScrollFrame", baseName .. "ScrollFrame", section, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
+    scrollFrame:SetPoint("BOTTOMRIGHT", section, "BOTTOMRIGHT", -28, 0)
+
+    local content = CreateFrame("Frame", baseName .. "Content", scrollFrame)
+    content:SetWidth(500)
+    content:SetHeight(1)
+    scrollFrame:SetScrollChild(content)
+    section.content = content
+    section.rows = {}
+    section.entryProvider = entryProvider
+    section.listType = listType
+
+    return section
+end
+
+local function RefreshManagedListSection(section)
+    if not section or not section.entryProvider then
+        return
+    end
+
+    local entries = section.entryProvider() or {}
+    local content = section.content
+    local rowHeight = 24
+    local visibleRows = math.max(#entries, 1)
+    content:SetHeight(visibleRows * rowHeight)
+
+    for i = 1, visibleRows do
+        local row = section.rows[i]
+        if not row then
+            row = CreateFrame("Frame", nil, content)
+            row:SetWidth(500)
+            row:SetHeight(rowHeight)
+            if i == 1 then
+                row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+            else
+                row:SetPoint("TOPLEFT", section.rows[i - 1], "BOTTOMLEFT", 0, 0)
+            end
+
+            local label = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+            label:SetPoint("LEFT", row, "LEFT", 4, 0)
+            label:SetWidth(400)
+            label:SetJustifyH("LEFT")
+            row.label = label
+
+            local removeButton = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+            removeButton:SetSize(72, 20)
+            removeButton:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+            removeButton:SetText("Remove")
+            row.removeButton = removeButton
+
+            section.rows[i] = row
+        end
+
+        local entry = entries[i]
+        if entry then
+            row.label:SetText(FormatListEntryLabel(section.listType, entry))
+            row.removeButton:SetScript("OnClick", function()
+                RemoveListEntry(section.listType, entry)
+            end)
+            row:Show()
+        else
+            row.label:SetText("No entries.")
+            row.removeButton:SetScript("OnClick", nil)
+            row.removeButton:Hide()
+            row:Show()
+        end
+
+        if entry then
+            row.removeButton:Show()
+        end
+    end
+
+    for i = visibleRows + 1, #section.rows do
+        section.rows[i]:Hide()
+    end
+end
 
 ------------------------------------------------------------------------
 -- Slot and option configuration
@@ -1116,6 +1285,52 @@ function AH.CreateThemeOptionsPanel(mainPanel)
 end
 
 ------------------------------------------------------------------------
+-- Create list management panel
+------------------------------------------------------------------------
+function AH.CreateListManagementPanel(mainPanel)
+    local listPanel = CreateFrame("Frame", "AttuneHelperListManagementPanel", mainPanel)
+    listPanel.name = "List Management"
+    listPanel.parent = mainPanel.name
+    InterfaceOptions_AddCategory(listPanel)
+
+    local title = listPanel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", 16, -16)
+    title:SetText("List Management")
+
+    local subtitle = listPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
+    subtitle:SetText("Review and remove entries from AHSet, AHIgnore, and Always Vendored.")
+
+    local ahSetSection = CreateManagedListSection(listPanel, "AHSet", subtitle, "ahset", GetAHSetEntries)
+    local ignoreSection = CreateManagedListSection(listPanel, "AHIgnore", ahSetSection, "ignore", GetAHIgnoreEntries)
+    local vendorSection = CreateManagedListSection(listPanel, "Always Vendored", ignoreSection, "vendor", GetAlwaysVendorEntries)
+
+    AH.list_management_controls = {
+        panel = listPanel,
+        ahset = ahSetSection,
+        ignore = ignoreSection,
+        vendor = vendorSection
+    }
+
+    AH.RefreshListManagementPanel = function()
+        if not AH.list_management_controls then
+            return
+        end
+        RefreshManagedListSection(AH.list_management_controls.ahset)
+        RefreshManagedListSection(AH.list_management_controls.ignore)
+        RefreshManagedListSection(AH.list_management_controls.vendor)
+    end
+
+    listPanel:SetScript("OnShow", function()
+        if AH.RefreshListManagementPanel then
+            AH.RefreshListManagementPanel()
+        end
+    end)
+
+    return listPanel
+end
+
+------------------------------------------------------------------------
 -- Create button layout options panel
 ------------------------------------------------------------------------
 function AH.CreateButtonLayoutOptionsPanel(mainPanel)
@@ -1608,6 +1823,7 @@ function AH.InitializeAllOptions()
     -- Create sub-panels
     local generalPanel = AH.CreateGeneralOptionsPanel(mainPanel)
     local themePanel = AH.CreateThemeOptionsPanel(mainPanel)
+    local listManagementPanel = AH.CreateListManagementPanel(mainPanel)
     local buttonLayoutPanel = AH.CreateButtonLayoutOptionsPanel(mainPanel)
     local blacklistPanel = AH.CreateBlacklistOptionsPanel(mainPanel)
     local forgePanel = AH.CreateForgeOptionsPanel(mainPanel)
@@ -1618,6 +1834,7 @@ function AH.InitializeAllOptions()
         main = mainPanel,
         general = generalPanel,
         theme = themePanel,
+        listManagement = listManagementPanel,
         buttonLayout = buttonLayoutPanel,
         blacklist = blacklistPanel,
         forge = forgePanel,

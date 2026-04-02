@@ -4,6 +4,7 @@
 
 -- Essential saved variables that must be initialized early
 AHIgnoreList = AHIgnoreList or {}
+AHVendorList = AHVendorList or {}
 AHSetList = AHSetList or {} -- Now stores itemName = "TargetSlotName"
 AttuneHelperDB = AttuneHelperDB or {}
 AHCharSettings = AHCharSettings or {}

@@ -431,6 +431,7 @@ _G.AH_wait = AH.Wait -- maintain original global name
 ------------------------------------------------------------------------
 function AH.InitializeDefaultSettings()
     AHCharSettings = AHCharSettings or {}
+    AHVendorList = AHVendorList or {}
     if AttuneHelperDB["Background Style"] == nil then AttuneHelperDB["Background Style"] = "Tooltip" end
     if type(AttuneHelperDB["Background Color"]) ~= "table" or #AttuneHelperDB["Background Color"] < 4 then 
         AttuneHelperDB["Background Color"] = {0, 0, 0, 0.8} 
@@ -656,6 +657,15 @@ function AH.InitializeDefaultSettings()
         if AHIgnoreList[key] == nil then
             AHIgnoreList[key] = true
         end
+    end
+
+    local defaultAlwaysVendorItemIDs = {
+    }
+    if AttuneHelperDB["AlwaysVendorDefaultsApplied"] ~= 1 then
+        for _, itemID in ipairs(defaultAlwaysVendorItemIDs) do
+            AHVendorList["id:" .. itemID] = true
+        end
+        AttuneHelperDB["AlwaysVendorDefaultsApplied"] = 1
     end
 
 end

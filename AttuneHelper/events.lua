@@ -2,6 +2,31 @@
 -- Language server refresh trigger
 local AH = _G.AttuneHelper
 
+local function ScheduleVendorCompatRefresh(retriesLeft, delay)
+    if not AH or not AH.Wait or not AH.RefreshVendorCompatButtons then
+        return
+    end
+
+    retriesLeft = retriesLeft or 1
+    delay = delay or 0.1
+
+    AH.Wait(delay, function()
+        AH.RefreshVendorCompatButtons()
+        if retriesLeft > 1 then
+            ScheduleVendorCompatRefresh(retriesLeft - 1, delay)
+        end
+    end)
+end
+
+local function PrimeVendorCompatFromMerchantShow()
+    if AH.vendorCompatPrimed then
+        return
+    end
+
+    AH.vendorCompatPrimed = true
+    ScheduleVendorCompatRefresh(12, 0.1)
+end
+
 -- Throttling variables
 AH.lastAutoEquipTime = 0
 AH.AUTO_EQUIP_COOLDOWN = 2.0 -- ʕ •ᴥ•ʔ✿ Prevent spam equipping ✿ ʕ •ᴥ•ʔ
@@ -81,6 +106,47 @@ local function IsPrestigedCharacter()
     return (CMCGetMultiClassEnabled() or 1) >= 2
 end
 
+local function GetStoredAccountAttuneTotal()
+    if not AttuneHelperDB then
+        return 0
+    end
+    return tonumber(AttuneHelperDB["TrackedAccountAttuneTotal"]) or 0
+end
+
+local function SetStoredAccountAttuneTotal(value)
+    if not AttuneHelperDB then
+        return
+    end
+    AttuneHelperDB["TrackedAccountAttuneTotal"] = math.max(0, tonumber(value) or 0)
+end
+
+local function GetCurrentDateKey()
+    return date("%Y-%m-%d")
+end
+
+function AH.EnsureDailyAttuneSnapshotCurrent()
+    if not AttuneHelperDB then
+        return
+    end
+
+    local todayKey = GetCurrentDateKey()
+    local storedTotal = GetStoredAccountAttuneTotal()
+    local snapshotDate = AttuneHelperDB["DailyAttuneSnapshotDate"]
+
+    if snapshotDate ~= todayKey then
+        AttuneHelperDB["DailyAttuneSnapshotDate"] = todayKey
+        AttuneHelperDB["DailyAttuneSnapshotTotal"] = storedTotal
+    elseif AttuneHelperDB["DailyAttuneSnapshotTotal"] == nil then
+        AttuneHelperDB["DailyAttuneSnapshotTotal"] = storedTotal
+    end
+end
+
+local function RefreshMerchantAttuneSummary()
+    if AH and AH.RefreshVendorCompatButtons and AH.IsVendorWindowOpen and AH.IsVendorWindowOpen() then
+        AH.Wait(0.05, AH.RefreshVendorCompatButtons)
+    end
+end
+
 ------------------------------------------------------------------------
 -- UI Initialization
 ------------------------------------------------------------------------
@@ -150,6 +216,8 @@ function AH.OnEvent(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == "AttuneHelper" then
         print("|cff00ff00[AttuneHelper]|r ADDON_LOADED event fired, initializing...")
         AH.InitializeDefaultSettings()
+        AH.currentAccountAttuneTotal = GetStoredAccountAttuneTotal()
+        AH.EnsureDailyAttuneSnapshotCurrent()
 
         -- Check for SCK addon
         if _G["SCK"] and type(_G["SCK"].loop) == "function" then
@@ -170,7 +238,11 @@ function AH.OnEvent(self, event, arg1)
             AH.Wait(0.1, AH.UpdateDisplayMode)
         end
 
-        self:UnregisterEvent("ADDON_LOADED")
+        ScheduleVendorCompatRefresh(1, 0.1)
+
+        if self ~= AH.UI.mainFrame then
+            self:UnregisterEvent("ADDON_LOADED")
+        end
     elseif event == "PLAYER_LOGIN" then
         self:UnregisterEvent("PLAYER_LOGIN")
 
@@ -235,11 +307,14 @@ function AH.OnEvent(self, event, arg1)
             end
         end)
     elseif event == "MERCHANT_SHOW" then
+        AH.EnsureDailyAttuneSnapshotCurrent()
         if AH.SetMerchantWindowOpen then
             AH.SetMerchantWindowOpen(true)
         else
             AH.merchantWindowOpen = true
         end
+        PrimeVendorCompatFromMerchantShow()
+        ScheduleVendorCompatRefresh(2, 0.05)
     elseif event == "MERCHANT_CLOSED" then
         if AH.SetMerchantWindowOpen then
             AH.SetMerchantWindowOpen(false)
@@ -249,10 +324,14 @@ function AH.OnEvent(self, event, arg1)
     elseif event == "CHAT_MSG_SYSTEM" then
         local message = arg1
         if message and string.find(message, "You have attuned with", 1, true) then
+            AH.EnsureDailyAttuneSnapshotCurrent()
+            AH.currentAccountAttuneTotal = (AH.currentAccountAttuneTotal or GetStoredAccountAttuneTotal()) + 1
+            SetStoredAccountAttuneTotal(AH.currentAccountAttuneTotal)
             if AH.RequestUpdateList then
                 local updateMask = AH.UPDATE_MASK or { FULL_LIST = 1, OBTAINED = 2, ATTUNED_PERCENT = 4 }
                 AH.RequestUpdateList(bit.bor(updateMask.OBTAINED, updateMask.ATTUNED_PERCENT))
             end
+            RefreshMerchantAttuneSummary()
         end
     elseif event == "UNIT_KILL" then
         if not IsPrestigedCharacter() then

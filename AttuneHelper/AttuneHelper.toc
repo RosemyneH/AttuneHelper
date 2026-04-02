@@ -1,9 +1,9 @@
 ## Interface: 30300
-## Title: Attune|cFFFFA500Helper|r - |cFFFFFF001.6.0a|r
+## Title: Attune|cFFFFA500Helper|r - |cFFFFFF001.6.1 PR-1|r
 ## Notes: Automatically Swaps Gear To Streamline Attunement
 ## Author: Multiple People
-## Version: 1.6.0a
-## SavedVariables: AttuneHelperDB, AHIgnoreList
+## Version: 1.6.1 pr-1
+## SavedVariables: AttuneHelperDB, AHIgnoreList, AHVendorList
 ## SavedVariablesPerCharacter: AHSetList, AHCharSettings
 
 init.lua
