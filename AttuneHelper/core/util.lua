@@ -314,6 +314,51 @@ function AH.GetItemIDFromLink(itemLink)
 end
 _G.GetItemIDFromLink = AH.GetItemIDFromLink
 
+function AH.GetItemIconForId(itemId)
+    if not itemId then
+        return nil
+    end
+    local _, _, _, _, _, _, _, _, _, tex = GetItemInfo(itemId)
+    if tex and tex ~= "" then
+        return tex
+    end
+    if type(GetItemInfoCustom) == "function" then
+        _, _, _, _, _, _, _, _, _, tex = GetItemInfoCustom(itemId)
+        if tex and tex ~= "" then
+            return tex
+        end
+    end
+    if GetItemIcon then
+        tex = GetItemIcon(itemId)
+        if tex and tex ~= "" then
+            return tex
+        end
+    end
+    return nil
+end
+
+function AH.GetItemDisplayName(itemId, itemLink)
+    if itemLink then
+        local n = select(1, GetItemInfo(itemLink))
+        if n then
+            return n
+        end
+    end
+    if itemId then
+        local n = select(1, GetItemInfo(itemId))
+        if n then
+            return n
+        end
+        if type(GetItemInfoCustom) == "function" then
+            n = select(1, GetItemInfoCustom(itemId))
+            if n then
+                return n
+            end
+        end
+    end
+    return nil
+end
+
 -- Convert FORGE_LEVEL_MAP value to 3-param API format (0–3)
 function AH.ConvertForgeMapToApiParam(forgeLevelMapValue)
     local map = AH.FORGE_LEVEL_MAP
@@ -539,23 +584,6 @@ function AH.InitializeDefaultSettings()
         end
     end
 
-    local weaponControlDefaults = {
-        ["Allow MainHand 1H Weapons"] = 1,
-        ["Allow MainHand 2H Weapons"] = 1,
-        ["Allow OffHand 1H Weapons"] = 1,
-        ["Allow OffHand 2H Weapons"] = 0,
-        ["Allow OffHand Shields"] = 1,
-        ["Allow OffHand Holdables"] = 1
-    }
-    for settingName, defaultValue in pairs(weaponControlDefaults) do
-        if AHCharSettings[settingName] == nil then
-            if AttuneHelperDB[settingName] ~= nil then
-                AHCharSettings[settingName] = AttuneHelperDB[settingName]
-            else
-                AHCharSettings[settingName] = defaultValue
-            end
-        end
-    end
     
 	-- ʕ •ᴥ•ʔ✿ Default ignored items (only seeded once, never overwritten) ✿ ʕ •ᴥ•ʔ
     -- AHIgnoreList is keyed by item name (string). A nil value means
@@ -668,12 +696,22 @@ function AH.InitializeDefaultSettings()
         AttuneHelperDB["AlwaysVendorDefaultsApplied"] = 1
     end
 
+    if AH.InitCharProfileAfterLoad then
+        AH.InitCharProfileAfterLoad()
+    end
 end
 _G.InitializeDefaultSettings = AH.InitializeDefaultSettings
 
 function AH.GetWeaponControlSetting(settingName)
     if not settingName then
         return 0
+    end
+
+    if AH.GetCharProfile then
+        local p = AH.GetCharProfile()
+        if p.weapon[settingName] ~= nil then
+            return p.weapon[settingName]
+        end
     end
 
     AHCharSettings = AHCharSettings or {}
@@ -700,6 +738,10 @@ _G.GetWeaponControlSetting = AH.GetWeaponControlSetting
 function AH.SetWeaponControlSetting(settingName, value)
     if not settingName then
         return
+    end
+    if AH.GetCharProfile then
+        local p = AH.GetCharProfile()
+        p.weapon[settingName] = value
     end
     AHCharSettings = AHCharSettings or {}
     AHCharSettings[settingName] = value

@@ -99,6 +99,40 @@ function AH.TriggerThrottledAutoEquip(delay)
     end
 end
 
+local function SchedulePostAttuneAutoEquipRefresh(attemptsLeft, delay)
+    if not AH or not AH.Wait then
+        return
+    end
+
+    attemptsLeft = attemptsLeft or 1
+    delay = delay or 0.75
+
+    AH.Wait(delay, function()
+        if AH.ClearRecentlyEquippedSlots then
+            AH.ClearRecentlyEquippedSlots()
+        end
+
+        if AH.GetCurrentAttuneCounts then
+            AH.GetCurrentAttuneCounts()
+        end
+
+        local updateMask = AH.UPDATE_MASK or { FULL_LIST = 1, OBTAINED = 2, ATTUNED_PERCENT = 4 }
+        if AH.RequestUpdateList then
+            AH.RequestUpdateList(bit.bor(updateMask.FULL_LIST, updateMask.ATTUNED_PERCENT))
+        elseif AH.RefreshAllBagCaches then
+            AH.RefreshAllBagCaches()
+        end
+
+        if AttuneHelperDB and AttuneHelperDB["Auto Equip Attunable After Combat"] == 1 and AH.TriggerThrottledAutoEquip then
+            AH.TriggerThrottledAutoEquip(0.02)
+        end
+
+        if attemptsLeft > 1 then
+            SchedulePostAttuneAutoEquipRefresh(attemptsLeft - 1, delay + 0.75)
+        end
+    end)
+end
+
 local function IsPrestigedCharacter()
     if type(CMCGetMultiClassEnabled) ~= "function" then
         return false
@@ -124,24 +158,320 @@ local function GetCurrentDateKey()
     return date("%Y-%m-%d")
 end
 
-function AH.EnsureDailyAttuneSnapshotCurrent()
+local RefreshMerchantAttuneSummary
+
+local function CopyAttuneCounts(source)
+    source = source or {}
+    return {
+        account = math.max(0, tonumber(source.account) or tonumber(source[1]) or 0),
+        titanforged = math.max(0, tonumber(source.titanforged) or tonumber(source.tf) or tonumber(source[2]) or 0),
+        warforged = math.max(0, tonumber(source.warforged) or tonumber(source.wf) or tonumber(source[3]) or 0),
+        lightforged = math.max(0, tonumber(source.lightforged) or tonumber(source.lf) or tonumber(source[4]) or 0)
+    }
+end
+
+local function NormalizeAttuneCounts(...)
+    local values = { ... }
+    if #values == 1 and type(values[1]) == "table" then
+        return CopyAttuneCounts(values[1])
+    end
+    return CopyAttuneCounts(values)
+end
+
+local function AttuneCountsEqual(a, b)
+    if not a or not b then
+        return false
+    end
+
+    return (tonumber(a.account) or 0) == (tonumber(b.account) or 0)
+        and (tonumber(a.titanforged) or 0) == (tonumber(b.titanforged) or 0)
+        and (tonumber(a.warforged) or 0) == (tonumber(b.warforged) or 0)
+        and (tonumber(a.lightforged) or 0) == (tonumber(b.lightforged) or 0)
+end
+
+local function GetSnapshotTable(createIfMissing)
+    if not AttuneHelperDB then
+        return nil
+    end
+
+    if type(AttuneHelperDB["DailyAttuneSnapshot"]) ~= "table" then
+        if not createIfMissing then
+            return nil
+        end
+        AttuneHelperDB["DailyAttuneSnapshot"] = {}
+    end
+
+    return AttuneHelperDB["DailyAttuneSnapshot"]
+end
+
+local function StoreDailySnapshot(counts, dateKey)
     if not AttuneHelperDB then
         return
     end
 
-    local todayKey = GetCurrentDateKey()
-    local storedTotal = GetStoredAccountAttuneTotal()
-    local snapshotDate = AttuneHelperDB["DailyAttuneSnapshotDate"]
+    local snapshot = GetSnapshotTable(true)
+    counts = CopyAttuneCounts(counts)
+    snapshot.date = dateKey
+    snapshot.account = counts.account
+    snapshot.titanforged = counts.titanforged
+    snapshot.warforged = counts.warforged
+    snapshot.lightforged = counts.lightforged
 
-    if snapshotDate ~= todayKey then
-        AttuneHelperDB["DailyAttuneSnapshotDate"] = todayKey
-        AttuneHelperDB["DailyAttuneSnapshotTotal"] = storedTotal
-    elseif AttuneHelperDB["DailyAttuneSnapshotTotal"] == nil then
-        AttuneHelperDB["DailyAttuneSnapshotTotal"] = storedTotal
-    end
+    AttuneHelperDB["DailyAttuneSnapshotDate"] = dateKey
+    AttuneHelperDB["DailyAttuneSnapshotTotal"] = counts.account
+    AttuneHelperDB["DailyAttuneSnapshotTF"] = counts.titanforged
+    AttuneHelperDB["DailyAttuneSnapshotWF"] = counts.warforged
+    AttuneHelperDB["DailyAttuneSnapshotLF"] = counts.lightforged
 end
 
-local function RefreshMerchantAttuneSummary()
+local function ReadDailySnapshot()
+    if not AttuneHelperDB then
+        return nil
+    end
+
+    local snapshot = GetSnapshotTable(false)
+    if snapshot then
+        return {
+            date = snapshot.date or AttuneHelperDB["DailyAttuneSnapshotDate"],
+            account = tonumber(snapshot.account) or tonumber(AttuneHelperDB["DailyAttuneSnapshotTotal"]) or 0,
+            titanforged = tonumber(snapshot.titanforged) or tonumber(AttuneHelperDB["DailyAttuneSnapshotTF"]) or 0,
+            warforged = tonumber(snapshot.warforged) or tonumber(AttuneHelperDB["DailyAttuneSnapshotWF"]) or 0,
+            lightforged = tonumber(snapshot.lightforged) or tonumber(AttuneHelperDB["DailyAttuneSnapshotLF"]) or 0
+        }
+    end
+
+    if AttuneHelperDB["DailyAttuneSnapshotDate"] then
+        return {
+            date = AttuneHelperDB["DailyAttuneSnapshotDate"],
+            account = tonumber(AttuneHelperDB["DailyAttuneSnapshotTotal"]) or 0,
+            titanforged = tonumber(AttuneHelperDB["DailyAttuneSnapshotTF"]) or 0,
+            warforged = tonumber(AttuneHelperDB["DailyAttuneSnapshotWF"]) or 0,
+            lightforged = tonumber(AttuneHelperDB["DailyAttuneSnapshotLF"]) or 0
+        }
+    end
+
+    return nil
+end
+
+AH.pendingDailySnapshotCapture = AH.pendingDailySnapshotCapture or false
+AH.pendingDailySnapshotReset = AH.pendingDailySnapshotReset or false
+AH.DAILY_SNAPSHOT_STABILITY_DELAY = AH.DAILY_SNAPSHOT_STABILITY_DELAY or 0.6
+AH.DAILY_SNAPSHOT_STABLE_READS_REQUIRED = AH.DAILY_SNAPSHOT_STABLE_READS_REQUIRED or 2
+AH.DAILY_SNAPSHOT_MAX_ATTEMPTS = AH.DAILY_SNAPSHOT_MAX_ATTEMPTS or 8
+
+local function BeginStableDailySnapshotCapture(dateKey, options)
+    if not AH or not AH.Wait or not AttuneHelperDB then
+        return false
+    end
+
+    options = options or {}
+    if AH.pendingDailySnapshotCapture then
+        return false
+    end
+
+    AH.pendingDailySnapshotCapture = true
+
+    local attemptsLeft = tonumber(options.attempts) or AH.DAILY_SNAPSHOT_MAX_ATTEMPTS or 8
+    local delay = tonumber(options.delay) or AH.DAILY_SNAPSHOT_STABILITY_DELAY or 0.6
+    local stableReadsRequired = tonumber(options.stableReadsRequired) or AH.DAILY_SNAPSHOT_STABLE_READS_REQUIRED or 2
+    local onSuccess = options.onSuccess
+    local onFailure = options.onFailure
+    local previousCounts = nil
+    local stableReads = 0
+
+    local function finish(success, counts)
+        AH.pendingDailySnapshotCapture = false
+        if success then
+            StoreDailySnapshot(counts, dateKey)
+            if type(onSuccess) == "function" then
+                onSuccess(CopyAttuneCounts(counts))
+            end
+        elseif type(onFailure) == "function" then
+            onFailure()
+        end
+    end
+
+    local function sample()
+        local currentCounts = AH.GetCurrentAttuneCounts and AH.GetCurrentAttuneCounts() or nil
+        if not currentCounts then
+            finish(false)
+            return
+        end
+
+        if previousCounts and AttuneCountsEqual(previousCounts, currentCounts) then
+            stableReads = stableReads + 1
+        else
+            previousCounts = CopyAttuneCounts(currentCounts)
+            stableReads = 1
+        end
+
+        if stableReads >= stableReadsRequired then
+            finish(true, currentCounts)
+            return
+        end
+
+        attemptsLeft = attemptsLeft - 1
+        if attemptsLeft <= 0 then
+            finish(false)
+            return
+        end
+
+        AH.Wait(delay, sample)
+    end
+
+    sample()
+    return true
+end
+
+function AH.GetCurrentAttuneCounts()
+    if type(CalculateAttunedCount) ~= "function" or type(ItemLocIsLoaded) ~= "function" or not ItemLocIsLoaded() then
+        return nil
+    end
+
+    local counts = NormalizeAttuneCounts(CalculateAttunedCount())
+    AH.currentAttuneCounts = counts
+    AH.currentAccountAttuneTotal = counts.account
+    SetStoredAccountAttuneTotal(counts.account)
+    return CopyAttuneCounts(counts)
+end
+
+function AH.GetDailyAttuneSnapshot()
+    local snapshot = ReadDailySnapshot()
+    if not snapshot then
+        return nil
+    end
+
+    return {
+        date = snapshot.date,
+        account = snapshot.account,
+        titanforged = snapshot.titanforged,
+        warforged = snapshot.warforged,
+        lightforged = snapshot.lightforged
+    }
+end
+
+function AH.EnsureDailyAttuneSnapshotCurrent()
+    if not AttuneHelperDB then
+        return false
+    end
+
+    local todayKey = GetCurrentDateKey()
+    local snapshot = ReadDailySnapshot()
+
+    if snapshot and snapshot.date == todayKey then
+        StoreDailySnapshot(snapshot, todayKey)
+        return true
+    end
+
+    if AH.pendingDailySnapshotCapture then
+        return false
+    end
+
+    BeginStableDailySnapshotCapture(todayKey, {
+        onSuccess = function()
+            if AH.UpdateItemCountText then
+                AH.UpdateItemCountText()
+            end
+            RefreshMerchantAttuneSummary()
+        end
+    })
+
+    return false
+end
+
+function AH.ResetDailyAttuneSnapshot()
+    if not AttuneHelperDB then
+        return false
+    end
+
+    local todayKey = GetCurrentDateKey()
+    local currentCounts = AH.GetCurrentAttuneCounts and AH.GetCurrentAttuneCounts() or nil
+    if not currentCounts then
+        AttuneHelperDB["DailyAttuneSnapshotDate"] = nil
+        AttuneHelperDB["DailyAttuneSnapshotTotal"] = nil
+        AttuneHelperDB["DailyAttuneSnapshotTF"] = nil
+        AttuneHelperDB["DailyAttuneSnapshotWF"] = nil
+        AttuneHelperDB["DailyAttuneSnapshotLF"] = nil
+        AttuneHelperDB["DailyAttuneSnapshot"] = nil
+        return false
+    end
+
+    if AH.pendingDailySnapshotCapture then
+        return false
+    end
+
+    AH.pendingDailySnapshotReset = true
+    BeginStableDailySnapshotCapture(todayKey, {
+        attempts = math.max(AH.DAILY_SNAPSHOT_MAX_ATTEMPTS or 8, 10),
+        onSuccess = function()
+            AH.pendingDailySnapshotReset = false
+            if AH.UpdateItemCountText then
+                AH.UpdateItemCountText()
+            end
+            if AH.RefreshVendorCompatButtons then
+                AH.RefreshVendorCompatButtons()
+            end
+            print("|cff00ff00[AttuneHelper]|r Daily attune snapshot reset to stable server counts.")
+        end,
+        onFailure = function()
+            AH.pendingDailySnapshotReset = false
+        end
+    })
+
+    return false
+end
+
+function AH.GetTodaysAttuneBreakdown()
+    if AH.EnsureDailyAttuneSnapshotCurrent then
+        AH.EnsureDailyAttuneSnapshotCurrent()
+    end
+
+    local currentCounts = AH.GetCurrentAttuneCounts and AH.GetCurrentAttuneCounts() or nil
+    local snapshot = AH.GetDailyAttuneSnapshot and AH.GetDailyAttuneSnapshot() or nil
+    if not currentCounts or not snapshot or snapshot.date ~= GetCurrentDateKey() then
+        return {
+            ready = false,
+            account = 0,
+            titanforged = 0,
+            warforged = 0,
+            lightforged = 0
+        }
+    end
+
+    return {
+        ready = true,
+        account = math.max(0, currentCounts.account - snapshot.account),
+        titanforged = math.max(0, currentCounts.titanforged - snapshot.titanforged),
+        warforged = math.max(0, currentCounts.warforged - snapshot.warforged),
+        lightforged = math.max(0, currentCounts.lightforged - snapshot.lightforged)
+    }
+end
+
+local function ScheduleAttuneSnapshotRetry(retriesLeft, delay)
+    if not AH or not AH.Wait then
+        return
+    end
+
+    retriesLeft = retriesLeft or 1
+    delay = delay or 0.5
+
+    AH.Wait(delay, function()
+        local ready = AH.EnsureDailyAttuneSnapshotCurrent and AH.EnsureDailyAttuneSnapshotCurrent()
+        if ready then
+            if AH.UpdateItemCountText then
+                AH.UpdateItemCountText()
+            end
+            RefreshMerchantAttuneSummary()
+            return
+        end
+
+        if retriesLeft > 1 then
+            ScheduleAttuneSnapshotRetry(retriesLeft - 1, delay)
+        end
+    end)
+end
+
+RefreshMerchantAttuneSummary = function()
     if AH and AH.RefreshVendorCompatButtons and AH.IsVendorWindowOpen and AH.IsVendorWindowOpen() then
         AH.Wait(0.05, AH.RefreshVendorCompatButtons)
     end
@@ -192,6 +522,7 @@ function AH.RegisterEvents()
     if not AH.UI.mainFrame then return end
 
     AH.UI.mainFrame:RegisterEvent("ADDON_LOADED")
+    AH.UI.mainFrame:RegisterEvent("PLAYER_LOGIN")
     AH.UI.mainFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
     AH.UI.mainFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
     AH.UI.mainFrame:RegisterEvent("BAG_UPDATE")
@@ -239,12 +570,17 @@ function AH.OnEvent(self, event, arg1)
         end
 
         ScheduleVendorCompatRefresh(1, 0.1)
+        ScheduleAttuneSnapshotRetry(20, 0.5)
 
         if self ~= AH.UI.mainFrame then
             self:UnregisterEvent("ADDON_LOADED")
         end
     elseif event == "PLAYER_LOGIN" then
         self:UnregisterEvent("PLAYER_LOGIN")
+
+        if AH.InitCharProfileAfterLoad then
+            AH.InitCharProfileAfterLoad()
+        end
 
         AH.Wait(1, function()
             if AH.LoadAllSettings then
@@ -270,6 +606,9 @@ function AH.OnEvent(self, event, arg1)
         if not ItemLocIsLoaded() then
             return
         end
+
+        AH.GetCurrentAttuneCounts()
+        AH.EnsureDailyAttuneSnapshotCurrent()
 
         local updateMask = AH.UPDATE_MASK or { FULL_LIST = 1, OBTAINED = 2, ATTUNED_PERCENT = 4 }
 
@@ -307,6 +646,7 @@ function AH.OnEvent(self, event, arg1)
             end
         end)
     elseif event == "MERCHANT_SHOW" then
+        AH.GetCurrentAttuneCounts()
         AH.EnsureDailyAttuneSnapshotCurrent()
         if AH.SetMerchantWindowOpen then
             AH.SetMerchantWindowOpen(true)
@@ -324,14 +664,19 @@ function AH.OnEvent(self, event, arg1)
     elseif event == "CHAT_MSG_SYSTEM" then
         local message = arg1
         if message and string.find(message, "You have attuned with", 1, true) then
-            AH.EnsureDailyAttuneSnapshotCurrent()
-            AH.currentAccountAttuneTotal = (AH.currentAccountAttuneTotal or GetStoredAccountAttuneTotal()) + 1
-            SetStoredAccountAttuneTotal(AH.currentAccountAttuneTotal)
-            if AH.RequestUpdateList then
-                local updateMask = AH.UPDATE_MASK or { FULL_LIST = 1, OBTAINED = 2, ATTUNED_PERCENT = 4 }
-                AH.RequestUpdateList(bit.bor(updateMask.OBTAINED, updateMask.ATTUNED_PERCENT))
-            end
-            RefreshMerchantAttuneSummary()
+            AH.Wait(0.25, function()
+                if AH.ClearRecentlyEquippedSlots then
+                    AH.ClearRecentlyEquippedSlots()
+                end
+                AH.GetCurrentAttuneCounts()
+                AH.EnsureDailyAttuneSnapshotCurrent()
+                if AH.RequestUpdateList then
+                    local updateMask = AH.UPDATE_MASK or { FULL_LIST = 1, OBTAINED = 2, ATTUNED_PERCENT = 4 }
+                    AH.RequestUpdateList(bit.bor(updateMask.OBTAINED, updateMask.ATTUNED_PERCENT))
+                end
+                RefreshMerchantAttuneSummary()
+            end)
+            SchedulePostAttuneAutoEquipRefresh(4, 0.75)
         end
     elseif event == "UNIT_KILL" then
         if not IsPrestigedCharacter() then
@@ -346,6 +691,8 @@ function AH.OnEvent(self, event, arg1)
         AH.lastUnitKillAccountRefreshTime = now
 
         AH.Wait(0.4, function()
+            AH.GetCurrentAttuneCounts()
+            AH.EnsureDailyAttuneSnapshotCurrent()
             if AH.RequestUpdateList then
                 local updateMask = AH.UPDATE_MASK or { FULL_LIST = 1, OBTAINED = 2, ATTUNED_PERCENT = 4 }
                 AH.RequestUpdateList(bit.bor(updateMask.OBTAINED, updateMask.ATTUNED_PERCENT))

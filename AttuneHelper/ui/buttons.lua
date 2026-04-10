@@ -1,7 +1,31 @@
 -- ʕ •ᴥ•ʔ✿ UI · Main buttons ✿ ʕ •ᴥ•ʔ
 local AH = _G.AttuneHelper
+local todaysAttunesTooltipOverlays = setmetatable({}, { __mode = "k" })
 --ʕ •ᴥ•ʔ✿ Button layouts ✿ ʕ •ᴥ•ʔ
 local allButtons = { "equipAll", "openSettings", "vendor", "toggleAutoEquip", "AHSetUpdate", "sort", "equipAHSet" }
+local FORGE_BADGE_COLORS = {
+    TF = "|cff8080FF",
+    WF = "|cffFFA680",
+    LF = "|cffFFFFA6"
+}
+local DAILY_ATTUNES_THRESHOLDS = {
+    account = {
+        normal = { 20, 60, 80, 120, 180, 220 },
+        prestiged = { 40, 110, 150, 220, 320, 420 }
+    },
+    titanforged = {
+        normal = { 12, 20, 28, 36, 44, 52 },
+        prestiged = { 20, 32, 45, 60, 80, 100 }
+    },
+    warforged = {
+        normal = { 2, 3, 4, 5, 6, 8 },
+        prestiged = { 3, 5, 7, 10, 13, 16 }
+    },
+    lightforged = {
+        normal = { 1, 2, 3, 4, 5, 7 },
+        prestiged = { 2, 3, 5, 7, 9, 12 }
+    }
+}
 
 local function IsEquipAHSetReferencedInLayout()
     if not AttuneHelperDB then
@@ -617,37 +641,121 @@ local function SetAddToVendorTooltip(button, tooltipAnchor)
     GameTooltip:Show()
 end
 
-local function GetTodaysAttunesColorCode(count)
+local function GetForgeBadgeColorCode(forgeShortName)
+    return FORGE_BADGE_COLORS[forgeShortName] or "|cffffffff"
+end
+
+local function GetTodaysAttunesColorCode(count, attuneType, isPrestiged)
     count = tonumber(count) or 0
-    if count < 20 then
+    local bucket = DAILY_ATTUNES_THRESHOLDS[attuneType or "account"] or DAILY_ATTUNES_THRESHOLDS.account
+    local thresholds = (isPrestiged and bucket.prestiged) or bucket.normal
+    if count < thresholds[1] then
         return "|cffff4040"
-    elseif count < 60 then
+    elseif count < thresholds[2] then
         return "|cffff9a3d"
-    elseif count < 80 then
+    elseif count < thresholds[3] then
         return "|cffffff40"
-    elseif count < 120 then
+    elseif count < thresholds[4] then
         return "|cff40ff40"
-    elseif count < 180 then
+    elseif count < thresholds[5] then
         return "|cff4da6ff"
-    elseif count < 220 then
+    elseif count < thresholds[6] then
         return "|cffb266ff"
     end
     return "|cffd98cff"
 end
 
+local function BuildColoredTodaysAttunesValue(count, attuneType, isPrestiged)
+    local value = math.max(0, tonumber(count) or 0)
+    return string.format("%s%d|r", GetTodaysAttunesColorCode(value, attuneType, isPrestiged), value)
+end
+
+local function IsPrestigedForDailyBreakdown()
+    return type(CMCGetMultiClassEnabled) == "function" and (CMCGetMultiClassEnabled() or 1) >= 2
+end
+
+function AH.GetTodaysAttunesBreakdownForDisplay()
+    local breakdown = AH.GetTodaysAttuneBreakdown and AH.GetTodaysAttuneBreakdown() or {}
+    local isPrestiged = IsPrestigedForDailyBreakdown()
+    return {
+        ready = breakdown.ready == true,
+        account = tonumber(breakdown.account) or 0,
+        titanforged = tonumber(breakdown.titanforged) or 0,
+        warforged = tonumber(breakdown.warforged) or 0,
+        lightforged = tonumber(breakdown.lightforged) or 0,
+        isPrestiged = isPrestiged
+    }
+end
+
 function AH.GetTodaysAttunesDelta()
-    if AH.EnsureDailyAttuneSnapshotCurrent then
-        AH.EnsureDailyAttuneSnapshotCurrent()
-    end
-    local snapshotTotal = tonumber(AttuneHelperDB and AttuneHelperDB["DailyAttuneSnapshotTotal"]) or 0
-    local currentTotal = tonumber(AH.currentAccountAttuneTotal) or snapshotTotal
-    return math.max(0, currentTotal - snapshotTotal)
+    local breakdown = AH.GetTodaysAttunesBreakdownForDisplay and AH.GetTodaysAttunesBreakdownForDisplay() or {}
+    return math.max(0, tonumber(breakdown.account) or 0)
 end
 
 function AH.GetTodaysAttunesMerchantLabel()
     local delta = AH.GetTodaysAttunesDelta and AH.GetTodaysAttunesDelta() or 0
-    local colorCode = GetTodaysAttunesColorCode(delta)
+    local breakdown = AH.GetTodaysAttunesBreakdownForDisplay and AH.GetTodaysAttunesBreakdownForDisplay() or {}
+    local colorCode = GetTodaysAttunesColorCode(delta, "account", breakdown.isPrestiged)
     return string.format("%s\n%s%d|r", AH.t("Today's Attunes"), colorCode, delta)
+end
+
+function AH.AddTodaysAttunesTooltipLines(tooltip)
+    if not tooltip then
+        return
+    end
+
+    local breakdown = AH.GetTodaysAttunesBreakdownForDisplay and AH.GetTodaysAttunesBreakdownForDisplay() or {}
+    tooltip:AddLine(AH.t("Today's Attunes"), 1, 0.82, 0.2)
+
+    if not breakdown.ready then
+        tooltip:AddLine(AH.t("Daily snapshot pending item data load."), 0.85, 0.85, 0.85, true)
+        return
+    end
+
+    local isPrestiged = breakdown.isPrestiged == true
+    tooltip:AddLine(string.format("Account: %s", BuildColoredTodaysAttunesValue(breakdown.account or 0, "account", isPrestiged)), 1, 1, 1, true)
+    tooltip:AddLine(string.format("Titanforged: %s", BuildColoredTodaysAttunesValue(breakdown.titanforged or 0, "titanforged", isPrestiged)), 1, 1, 1, true)
+    tooltip:AddLine(string.format("Warforged: %s", BuildColoredTodaysAttunesValue(breakdown.warforged or 0, "warforged", isPrestiged)), 1, 1, 1, true)
+    tooltip:AddLine(string.format("Lightforged: %s", BuildColoredTodaysAttunesValue(breakdown.lightforged or 0, "lightforged", isPrestiged)), 1, 1, 1, true)
+end
+
+function AH.AttachTodaysAttunesTooltip(region, tooltipAnchor)
+    if not region then
+        return
+    end
+
+    local target = region
+    if not region.EnableMouse then
+        local overlay = todaysAttunesTooltipOverlays[region]
+        local parent = region.GetParent and region:GetParent() or nil
+        if not overlay and parent then
+            overlay = CreateFrame("Frame", nil, parent)
+            overlay:SetFrameStrata(parent:GetFrameStrata() or "MEDIUM")
+            overlay:SetFrameLevel((parent:GetFrameLevel() or 1) + 10)
+            todaysAttunesTooltipOverlays[region] = overlay
+        end
+        if not overlay then
+            return
+        end
+
+        local width = math.max(1, math.ceil((region.GetStringWidth and region:GetStringWidth()) or 0) + 8)
+        local height = math.max(1, math.ceil((region.GetStringHeight and region:GetStringHeight()) or 0) + 6)
+        overlay:ClearAllPoints()
+        overlay:SetPoint("CENTER", region, "CENTER", 0, 0)
+        overlay:SetSize(width, height)
+        overlay:EnableMouse(true)
+        overlay:Show()
+        target = overlay
+    else
+        region:EnableMouse(true)
+    end
+
+    target:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, tooltipAnchor or "ANCHOR_RIGHT")
+        AH.AddTodaysAttunesTooltipLines(GameTooltip)
+        GameTooltip:Show()
+    end)
+    target:SetScript("OnLeave", GameTooltip_Hide)
 end
 
 local function EnsureScootsTodaysAttunesLabel(parentFrame)
@@ -667,6 +775,9 @@ local function EnsureScootsTodaysAttunesLabel(parentFrame)
     label:ClearAllPoints()
     label:SetPoint("TOPLEFT", parentFrame, "TOPLEFT", 76, -35)
     label:SetText((AH.GetTodaysAttunesMerchantLabel and AH.GetTodaysAttunesMerchantLabel()) or AH.t("Vendor Attuned"))
+    if AH.AttachTodaysAttunesTooltip then
+        AH.AttachTodaysAttunesTooltip(label, "ANCHOR_TOPRIGHT")
+    end
     label:Show()
     return label
 end
@@ -848,6 +959,9 @@ function AH.RefreshVendorCompatButtons()
             _G.MerchantRepairText:SetText((AH.GetTodaysAttunesMerchantLabel and AH.GetTodaysAttunesMerchantLabel()) or AH.t("Vendor Attuned"))
             _G.MerchantRepairText:ClearAllPoints()
             _G.MerchantRepairText:SetPoint("CENTER", repairButton, "CENTER", -95, 0)
+            if AH.AttachTodaysAttunesTooltip then
+                AH.AttachTodaysAttunesTooltip(_G.MerchantRepairText, "ANCHOR_TOPRIGHT")
+            end
         end
         if merchantButton then
             merchantButton:ClearAllPoints()
@@ -1216,11 +1330,11 @@ function AH.SetupMainButtonHandlers()
                 -- Check forge level
                 local forgeLevel = AH.GetForgeLevelFromLink and AH.GetForgeLevelFromLink(itemData.link) or 0
                 if forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.WARFORGED or 2) then
-                    table.insert(indicators, "|cffFFA680[WF]|r")
+                    table.insert(indicators, string.format("%s[WF]|r", GetForgeBadgeColorCode("WF")))
                 elseif forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.LIGHTFORGED or 3) then
-                    table.insert(indicators, "|cffFFFFA6[LF]|r")
+                    table.insert(indicators, string.format("%s[LF]|r", GetForgeBadgeColorCode("LF")))
                 elseif forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.TITANFORGED or 1) then
-                    table.insert(indicators, "|cff8080FF[TF]|r")
+                    table.insert(indicators, string.format("%s[TF]|r", GetForgeBadgeColorCode("TF")))
                 end
 
                 -- Combine name with indicators
@@ -1411,11 +1525,11 @@ function AH.SetupMiniButtonHandlers()
                         -- Check forge level
                         local forgeLevel = AH.GetForgeLevelFromLink and AH.GetForgeLevelFromLink(itemData.link) or 0
                         if forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.WARFORGED or 2) then
-                            table.insert(indicators, "|cffFFA680[WF]|r")
+                            table.insert(indicators, string.format("%s[WF]|r", GetForgeBadgeColorCode("WF")))
                         elseif forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.LIGHTFORGED or 3) then
-                            table.insert(indicators, "|cffFFFFA6[LF]|r")
+                            table.insert(indicators, string.format("%s[LF]|r", GetForgeBadgeColorCode("LF")))
                         elseif forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.TITANFORGED or 1) then
-                            table.insert(indicators, "|cff8080FF[TF]|r")
+                            table.insert(indicators, string.format("%s[TF]|r", GetForgeBadgeColorCode("TF")))
                         end
 
                         -- Combine name with indicators

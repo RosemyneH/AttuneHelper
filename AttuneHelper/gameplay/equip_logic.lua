@@ -39,6 +39,10 @@ local function GetCachedItemInfoForEquip(itemLink)
     return cached and cached[1], cached and cached[2]
 end
 
+function AH.ClearRecentlyEquippedSlots()
+    wipe(recentlyEquippedItems)
+end
+
 local function IsBaseVariantAttuned(itemId)
     if not itemId then
         return false
@@ -249,12 +253,15 @@ function AH.performEquipAction(itemRecord, targetSlotID, currentSlotNameForActio
                         StaticPopup_Show("EQUIP_BIND")
                         AH.Wait(0.05, function()
                             -- Find and click "Yes" button on any BoE popup
+                            local popupClicked = false
                             for i = 1, STATICPOPUP_NUMDIALOGS do
-                                local popup = _G["StaticPopup" .. i]
-                                if popup and popup:IsVisible() and (popup.which == "EQUIP_BIND" or popup.which == "AUTOEQUIP_BIND") then
-                                    if popup.button1 and popup.button1:IsEnabled() then
-                                        popup.button1:Click()
-                                        break
+                                if not popupClicked then
+                                    local popup = _G["StaticPopup" .. i]
+                                    if popup and popup:IsVisible() and (popup.which == "EQUIP_BIND" or popup.which == "AUTOEQUIP_BIND") then
+                                        if popup.button1 and popup.button1:IsEnabled() then
+                                            popup.button1:Click()
+                                            popupClicked = true
+                                        end
                                     end
                                 end
                             end
@@ -430,14 +437,16 @@ function AH.EquipAllAttunables()
     -- ʕ •ᴥ•ʔ✿ Check P3 (AHSet) candidates that exist and qualify ✿ ʕ •ᴥ•ʔ
     for setKey, targetSlot in pairs(AHSetList) do
         if targetSlot then
-            -- Check if AHSet item exists in bags
+            local p3Matched = false
             for _, bagTbl in pairs(AH.bagSlotCache) do
-                if bagTbl then
+                if bagTbl and not p3Matched then
                     for _, rec in pairs(bagTbl) do
-                        local recIdentifier = rec and AH.CreateItemIdentifier(rec.link, rec.name)
-                        if rec and rec.inSet and (setKey == recIdentifier or setKey == rec.name) and AH.CanEquipItemPolicyCheck(rec) then
-                            targetedSlots[targetSlot] = true
-                            break
+                        if not p3Matched then
+                            local recIdentifier = rec and AH.CreateItemIdentifier(rec.link, rec.name)
+                            if rec and rec.inSet and (setKey == recIdentifier or setKey == rec.name) and AH.CanEquipItemPolicyCheck(rec) then
+                                targetedSlots[targetSlot] = true
+                                p3Matched = true
+                            end
                         end
                     end
                 end
@@ -767,19 +776,17 @@ function AH.EquipAHSetOnly()
 
             local chosenCandidate = nil
             for _, bagTbl in pairs(AH.bagSlotCache or {}) do
-                if bagTbl then
+                if bagTbl and not chosenCandidate then
                     for _, rec in pairs(bagTbl) do
-                        local identifier = rec and AH.CreateItemIdentifier(rec.link, rec.name)
-                        local designatedSlot = rec and (AHSetList[identifier] or AHSetList[rec.name])
-                        if rec and designatedSlot == targetSlot and canCandidateEquipSlot(targetSlot, rec.equipSlot, currentMHIs2H) then
-                            chosenCandidate = rec
-                            foundAnyAHSetCandidate = true
-                            break
+                        if not chosenCandidate then
+                            local identifier = rec and AH.CreateItemIdentifier(rec.link, rec.name)
+                            local designatedSlot = rec and (AHSetList[identifier] or AHSetList[rec.name])
+                            if rec and designatedSlot == targetSlot and canCandidateEquipSlot(targetSlot, rec.equipSlot, currentMHIs2H) then
+                                chosenCandidate = rec
+                                foundAnyAHSetCandidate = true
+                            end
                         end
                     end
-                end
-                if chosenCandidate then
-                    break
                 end
             end
 
@@ -1065,7 +1072,9 @@ function AH.AssignItemToAHSetSlot(identifier, itemName, targetSlotName)
     if not identifier or not itemName or not targetSlotName then
         return false
     end
-    if type(AHSetList) ~= "table" then
+    if AH.EnsureAHSetListTable then
+        AH.EnsureAHSetListTable()
+    elseif type(AHSetList) ~= "table" then
         AHSetList = {}
     end
 
@@ -1090,6 +1099,9 @@ function AH.AssignItemToAHSetSlot(identifier, itemName, targetSlotName)
         AH.RebuildEquipSlotCache()
     end
     AH.UpdateItemCountText()
+    if AH.RefreshListManagementPanel then
+        AH.RefreshListManagementPanel()
+    end
     return true
 end
 
@@ -1151,7 +1163,9 @@ function AH.AddCursorItemToAHSet()
     if not CursorHasItem() then
         return false
     end
-    if type(AHSetList) ~= "table" then
+    if AH.EnsureAHSetListTable then
+        AH.EnsureAHSetListTable()
+    elseif type(AHSetList) ~= "table" then
         AHSetList = {}
     end
 
@@ -1208,7 +1222,10 @@ function AH.AddCursorItemToAHSet()
 end
 
 function AH.SetAHSetToEquipped()
-    AHSetList = {}
+    if AH.EnsureAHSetListTable then
+        AH.EnsureAHSetListTable()
+    end
+    wipe(AHSetList)
     print("|cffffd200[AttuneHelper]|r Deleted previous AHSetList Items.")
 
     local slotsList = { "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot", "WristSlot",
@@ -1220,19 +1237,25 @@ function AH.SetAHSetToEquipped()
         local eqID = invSlotID and GetInventoryItemID("player", invSlotID) or nil
         if eqID then
             local equippedItemLink = GetInventoryItemLink("player", invSlotID)
-            local equippedItemName = GetItemInfo(equippedItemLink)
+            local linkForId = equippedItemLink or ("item:" .. eqID)
+            local equippedItemName = AH.GetItemDisplayName and AH.GetItemDisplayName(eqID, equippedItemLink) or GetItemInfo(equippedItemLink)
             if equippedItemName then
-                -- ʕ •ᴥ•ʔ✿ Use enhanced identifier for duplicate name handling ✿ ʕ •ᴥ•ʔ
-                local identifier = AH.CreateItemIdentifier(equippedItemLink, equippedItemName)
+                local identifier = AH.CreateItemIdentifier(linkForId, equippedItemName)
                 AHSetList[identifier] = slotName
-                -- Keep legacy name key for compatibility with name-based set checks.
                 if not AHSetList[equippedItemName] then
                     AHSetList[equippedItemName] = slotName
                 end
-                print("|cffffd200[AH]|r '" .. equippedItemName .. "' (ID: " .. (AH.GetItemIDFromLink(equippedItemLink) or "unknown") .. 
+                print("|cffffd200[AH]|r '" .. equippedItemName .. "' (ID: " .. tostring(eqID) ..
                     ") added to AHSet, designated for slot " .. slotName .. ".")
             end
         end
+    end
+
+    if AH.ForceSaveSettings then
+        AH.ForceSaveSettings()
+    end
+    if AH.RefreshListManagementPanel then
+        AH.RefreshListManagementPanel()
     end
 end
 

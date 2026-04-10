@@ -3,6 +3,11 @@ local AH = _G.AttuneHelper
 local AHVendorOverflowTooltip = CreateFrame("GameTooltip", "AHVendorOverflowTooltip", UIParent, "GameTooltipTemplate")
 AHVendorOverflowTooltip:SetFrameStrata("TOOLTIP")
 AHVendorOverflowTooltip:SetClampedToScreen(true)
+local FORGE_BADGE_COLORS = {
+    TF = "|cff8080FF",
+    WF = "|cffFFA680",
+    LF = "|cffFFFFA6"
+}
 local vendorListCache = {
     generation = -1,
     timestamp = 0,
@@ -22,11 +27,11 @@ _G.InvalidateVendorListCache = AH.InvalidateVendorListCache
 local function GetForgeBadgeText(itemLink)
     local forgeLevel = AH.GetForgeLevelFromLink and AH.GetForgeLevelFromLink(itemLink) or 0
     if forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.WARFORGED or 2) then
-        return "|cffFFA680[WF]|r"
+        return FORGE_BADGE_COLORS.WF .. "[WF]|r"
     elseif forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.LIGHTFORGED or 3) then
-        return "|cffFFFFA6[LF]|r"
+        return FORGE_BADGE_COLORS.LF .. "[LF]|r"
     elseif forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.TITANFORGED or 1) then
-        return "|cff8080FF[TF]|r"
+        return FORGE_BADGE_COLORS.TF .. "[TF]|r"
     end
     return ""
 end
