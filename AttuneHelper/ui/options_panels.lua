@@ -155,6 +155,43 @@ local function FindAHSetKeyForSlot(slotName)
     return fallback
 end
 
+local function ElevateOpenDropDownLists()
+    local maxLevels = _G.UIDROPDOWNMENU_MAXLEVELS or 2
+    for i = 1, maxLevels do
+        local list = _G["DropDownList" .. i]
+        if list and list:IsShown() then
+            list:SetFrameStrata("TOOLTIP")
+            list:SetToplevel(true)
+        end
+    end
+end
+
+local function ElevateColorPickerStrata()
+    local cp = _G.ColorPickerFrame
+    if not cp then
+        return
+    end
+    cp:SetFrameStrata("TOOLTIP")
+    cp:SetToplevel(true)
+    local opacity = _G.ColorPickerFrameOpacitySlider or _G.OpacitySliderFrame
+    if opacity then
+        opacity:SetFrameStrata("TOOLTIP")
+        opacity:SetToplevel(true)
+    end
+end
+
+function AH.EnsureInterfaceOptionsTransientStrataHooks()
+    if AH._interfaceOptionsStrataHooksRegistered then
+        return
+    end
+    AH._interfaceOptionsStrataHooksRegistered = true
+    hooksecurefunc("ToggleDropDownMenu", function()
+        if InterfaceOptionsFrame and InterfaceOptionsFrame:IsShown() then
+            ElevateOpenDropDownLists()
+        end
+    end)
+end
+
 local function EnsureAHSetPresetPopups(onDataChanged)
     if StaticPopupDialogs["ATTUNEHELPER_NEW_AHSET_PRESET"] then
         return
@@ -166,6 +203,8 @@ local function EnsureAHSetPresetPopups(onDataChanged)
         hasEditBox = 1,
         maxLetters = 32,
         OnShow = function(self)
+            self:SetFrameStrata("TOOLTIP")
+            self:SetToplevel(true)
             self.editBox:SetText("")
             self.editBox:SetFocus()
         end,
@@ -190,6 +229,10 @@ local function EnsureAHSetPresetPopups(onDataChanged)
         text = "Delete AHSet preset \"%s\"?",
         button1 = DELETE,
         button2 = CANCEL,
+        OnShow = function(self)
+            self:SetFrameStrata("TOOLTIP")
+            self:SetToplevel(true)
+        end,
         OnAccept = function()
             local name = AH._pendingDeleteAHPreset
             AH._pendingDeleteAHPreset = nil
@@ -1315,6 +1358,7 @@ function AH.InitializeThemeOptions()
             a = AttuneHelperDB["Background Color"][4]
         }
         ColorPickerFrame:SetColorRGB(c[1], c[2], c[3])
+        ElevateColorPickerStrata()
         ColorPickerFrame:Show()
     end)
 
@@ -2445,6 +2489,10 @@ function AH.InitializeAllOptions()
     
     -- Setup event handlers
     AH.SetupPanelHandlers()
+
+    if AH.EnsureInterfaceOptionsTransientStrataHooks then
+        AH.EnsureInterfaceOptionsTransientStrataHooks()
+    end
     
     print("|cff00ff00[AttuneHelper]|r Options panels initialized successfully")
 end

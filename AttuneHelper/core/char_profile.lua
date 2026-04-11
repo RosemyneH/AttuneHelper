@@ -137,6 +137,32 @@ function AH.GetAHPresetOrder()
     return out
 end
 
+local function presetSetHasMappings(setTable)
+    return type(setTable) == "table" and next(setTable) ~= nil
+end
+
+local function queueEquipAHPresetAfterSwitch(previousActive, newActive)
+    if not previousActive or not newActive or previousActive == newActive then
+        return
+    end
+    local p = AH.GetCharProfile()
+    if not presetSetHasMappings(p.ah.sets[newActive]) then
+        return
+    end
+    if not AH.Wait then
+        return
+    end
+    AH.Wait(0, function()
+        if not AH.EquipAHSetOnly then
+            return
+        end
+        if AH.GetActiveAHPresetName() ~= newActive then
+            return
+        end
+        AH.EquipAHSetOnly()
+    end)
+end
+
 local function normalizePresetName(name)
     if not name then
         return nil
@@ -161,11 +187,13 @@ function AH.SwitchAHPreset(presetName)
     if not p.ah.sets[presetName] then
         return false
     end
+    local previousActive = p.ah.active
     p.ah.active = presetName
     AH.BindAHSetListToActivePreset()
     if AH.ForceSaveSettings then
         AH.ForceSaveSettings()
     end
+    queueEquipAHPresetAfterSwitch(previousActive, presetName)
     return true
 end
 
@@ -180,11 +208,13 @@ function AH.CreateAHPreset(rawName)
     end
     p.ah.sets[name] = {}
     table.insert(p.ah.order, name)
+    local previousActive = p.ah.active
     p.ah.active = name
     AH.BindAHSetListToActivePreset()
     if AH.ForceSaveSettings then
         AH.ForceSaveSettings()
     end
+    queueEquipAHPresetAfterSwitch(previousActive, name)
     return true
 end
 

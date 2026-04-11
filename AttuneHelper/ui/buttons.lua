@@ -355,7 +355,12 @@ local function UpdateButtonGroupVisibility(buttons, isMini)
         elseif shiftDown then
             stateKey = "Shift"
         end
-        local topKey, centerKey, bottomKey = GetCustomLayoutTrio(stateKey, showEquipAHSet)
+        local topKey, centerKey, bottomKey
+        if useCustomTwoButtonLayout then
+            topKey, bottomKey = GetCustomLayoutPair(stateKey, showEquipAHSet)
+        else
+            topKey, centerKey, bottomKey = GetCustomLayoutTrio(stateKey, showEquipAHSet)
+        end
         for _, key in ipairs(allButtons) do
             local btn = buttons[key]
             if btn then
@@ -579,13 +584,9 @@ function AH.CreateMiniIconButton(name, parent, iconPath, size, tooltipText)
 end
 
 local function AddVendorPreviewLines(tooltip, itemsToVendor)
-    local showAllItems = IsShiftKeyDown()
-    local previewLimit = 12
-    local itemsToShow = showAllItems and #itemsToVendor or math.min(#itemsToVendor, previewLimit)
-
     if #itemsToVendor > 0 then
         tooltip:AddLine(string.format(AH.t("Items to be sold (%d):"), #itemsToVendor), 1, 1, 0)
-        for i = 1, itemsToShow do
+        for i = 1, #itemsToVendor do
             local itemData = itemsToVendor[i]
             local _, _, itemQuality, _, _, _, _, _, _, itemTexture = GetItemInfo(itemData.link)
             if (not itemTexture) and itemData.bag and itemData.slot then
@@ -607,10 +608,6 @@ local function AddVendorPreviewLines(tooltip, itemsToVendor)
                 itemLabel = itemLabel .. " |cffff6060[Delete]|r"
             end
             tooltip:AddLine(iconText .. itemLabel, r, g, b, true)
-        end
-        if not showAllItems and #itemsToVendor > itemsToShow then
-            local remainingItems = #itemsToVendor - itemsToShow
-            tooltip:AddLine(string.format(AH.t("...and %d more items (hold Shift to show all)."), remainingItems), 0.75, 0.75, 0.75, true)
         end
     else
         tooltip:AddLine(AH.t("No items will be sold based on current settings."), 0.8, 0.8, 0.8, true)
@@ -696,7 +693,7 @@ function AH.GetTodaysAttunesMerchantLabel()
     local delta = AH.GetTodaysAttunesDelta and AH.GetTodaysAttunesDelta() or 0
     local breakdown = AH.GetTodaysAttunesBreakdownForDisplay and AH.GetTodaysAttunesBreakdownForDisplay() or {}
     local colorCode = GetTodaysAttunesColorCode(delta, "account", breakdown.isPrestiged)
-    return string.format("%s\n%s%d|r", AH.t("Today's Attunes"), colorCode, delta)
+    return string.format("%s\n%s%d|r", AH.t("Daily Attuned"), colorCode, delta)
 end
 
 function AH.AddTodaysAttunesTooltipLines(tooltip)
@@ -705,7 +702,7 @@ function AH.AddTodaysAttunesTooltipLines(tooltip)
     end
 
     local breakdown = AH.GetTodaysAttunesBreakdownForDisplay and AH.GetTodaysAttunesBreakdownForDisplay() or {}
-    tooltip:AddLine(AH.t("Today's Attunes"), 1, 0.82, 0.2)
+    tooltip:AddLine(AH.t("Daily Attuned"), 1, 0.82, 0.2)
 
     if not breakdown.ready then
         tooltip:AddLine(AH.t("Daily snapshot pending item data load."), 0.85, 0.85, 0.85, true)
@@ -758,6 +755,23 @@ function AH.AttachTodaysAttunesTooltip(region, tooltipAnchor)
     target:SetScript("OnLeave", GameTooltip_Hide)
 end
 
+local function EnsureScootsQuickBuybackLabelHooks(quickBuyback)
+    if not quickBuyback or quickBuyback.AHQuickBuybackLabelHooks then
+        return
+    end
+    quickBuyback.AHQuickBuybackLabelHooks = true
+    quickBuyback:HookScript("OnShow", function()
+        if AH.RefreshVendorCompatButtons then
+            AH.Wait(0, AH.RefreshVendorCompatButtons)
+        end
+    end)
+    quickBuyback:HookScript("OnHide", function()
+        if AH.RefreshVendorCompatButtons then
+            AH.Wait(0, AH.RefreshVendorCompatButtons)
+        end
+    end)
+end
+
 local function EnsureScootsTodaysAttunesLabel(parentFrame)
     if not parentFrame then
         return nil
@@ -773,7 +787,12 @@ local function EnsureScootsTodaysAttunesLabel(parentFrame)
     end
 
     label:ClearAllPoints()
-    label:SetPoint("TOPLEFT", parentFrame, "TOPLEFT", 76, -35)
+    local quickBuyback = _G["ScootsVendor-QuickBuyback"]
+    if quickBuyback and quickBuyback.IsShown and quickBuyback:IsShown() then
+        label:SetPoint("TOPLEFT", quickBuyback, "TOPRIGHT", 8, 0)
+    else
+        label:SetPoint("TOPLEFT", parentFrame, "TOPLEFT", 76, -35)
+    end
     label:SetText((AH.GetTodaysAttunesMerchantLabel and AH.GetTodaysAttunesMerchantLabel()) or AH.t("Vendor Attuned"))
     if AH.AttachTodaysAttunesTooltip then
         AH.AttachTodaysAttunesTooltip(label, "ANCHOR_TOPRIGHT")
@@ -999,6 +1018,10 @@ function AH.RefreshVendorCompatButtons()
 
     if scootsVendorMaster and scootsCloseButton then
         AH.EnsureScootsVendorHooks()
+        local scootsQuickBuyback = _G["ScootsVendor-QuickBuyback"]
+        if scootsQuickBuyback then
+            EnsureScootsQuickBuybackLabelHooks(scootsQuickBuyback)
+        end
         scootsTodaysAttunesText = EnsureScootsTodaysAttunesLabel(scootsVendorMaster)
         scootsButton = CreateOrReuseCompatButton("AttuneHelperScootsVendorButton", scootsCloseButton:GetParent() or scootsVendorMaster, "ANCHOR_LEFT", "Interface\\AddOns\\AttuneHelper\\assets\\icon_vendor-attuned.blp", AH.ApplyVendorButtonBehavior)
         scootsAddToVendorButton = CreateOrReuseCompatButton("AttuneHelperScootsAddToVendorButton", scootsCloseButton:GetParent() or scootsVendorMaster, "ANCHOR_LEFT", "Interface\\AddOns\\AttuneHelper\\assets\\addToVendor.blp", AH.ApplyAddToVendorButtonBehavior)
