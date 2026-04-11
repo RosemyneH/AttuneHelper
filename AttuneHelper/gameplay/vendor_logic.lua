@@ -3,6 +3,9 @@ local AH = _G.AttuneHelper
 local AHVendorOverflowTooltip = CreateFrame("GameTooltip", "AHVendorOverflowTooltip", UIParent, "GameTooltipTemplate")
 AHVendorOverflowTooltip:SetFrameStrata("TOOLTIP")
 AHVendorOverflowTooltip:SetClampedToScreen(true)
+local AHVendorOverflowTooltipB = CreateFrame("GameTooltip", "AHVendorOverflowTooltipB", UIParent, "GameTooltipTemplate")
+AHVendorOverflowTooltipB:SetFrameStrata("TOOLTIP")
+AHVendorOverflowTooltipB:SetClampedToScreen(true)
 local FORGE_BADGE_COLORS = {
     TF = "|cff8080FF",
     WF = "|cffFFA680",
@@ -53,6 +56,22 @@ local function BuildVendorDisplayName(itemData)
         return badgeText .. " " .. baseName
     end
     return baseName
+end
+
+local function AddOverflowItemLinesToTooltip(tooltip, itemList)
+    for _, itemData in ipairs(itemList) do
+        local _, _, itemQuality, _, _, _, _, _, _, itemTexture = GetItemInfo(itemData.link)
+        if (not itemTexture) and itemData.bag and itemData.slot then
+            local _, _, _, _, _, _, _, _, _, containerTexture = GetContainerItemInfo(itemData.bag, itemData.slot)
+            itemTexture = containerTexture
+        end
+
+        local iconText = itemTexture and string.format("|T%s:14:14:0:0:64:64:4:60:4:60|t ", itemTexture) or ""
+        local displayName = BuildVendorDisplayName(itemData)
+        local _, r, g, b = GetItemQualityColor(itemQuality or 1)
+        r, g, b = r or 1, g or 1, b or 1
+        tooltip:AddLine(iconText .. displayName, r, g, b, true)
+    end
 end
 
 local function GetAlwaysVendorKey(itemID)
@@ -521,33 +540,53 @@ AH.SetupVendorDialog = function()
             local hasOverflow = data and data.overflowCount and data.overflowCount > 0
             if hasOverflow then
                 self.button1:SetScript("OnEnter", function(button)
+                    local overflowItems = data.overflowItems or {}
+                    local n = #overflowItems
                     AHVendorOverflowTooltip:SetOwner(button, "ANCHOR_NONE")
                     AHVendorOverflowTooltip:ClearAllPoints()
-                    if AttuneHelperDB["Vendor preview on Right (Default On)"] ~= 0 then
-                        AHVendorOverflowTooltip:SetPoint("TOPLEFT", self, "TOPRIGHT", 10, 0)
-                    else
-                        AHVendorOverflowTooltip:SetPoint("TOPRIGHT", self, "TOPLEFT", -10, 0)
-                    end
                     AHVendorOverflowTooltip:ClearLines()
-                    AHVendorOverflowTooltip:SetText(string.format("Additional items (%d)", data.overflowCount), 1, 1, 0)
+                    AHVendorOverflowTooltipB:Hide()
 
-                    for _, itemData in ipairs(data.overflowItems or {}) do
-                        local _, _, itemQuality, _, _, _, _, _, _, itemTexture = GetItemInfo(itemData.link)
-                        if (not itemTexture) and itemData.bag and itemData.slot then
-                            local _, _, _, _, _, _, _, _, _, containerTexture = GetContainerItemInfo(itemData.bag, itemData.slot)
-                            itemTexture = containerTexture
+                    if n >= 2 then
+                        local mid = math.floor(n / 2)
+                        AHVendorOverflowTooltip:SetPoint("TOPRIGHT", self, "TOPLEFT", -10, 0)
+                        AHVendorOverflowTooltip:SetText(string.format("Additional items (%d–%d of %d)", 1, mid, n), 1, 1, 0)
+                        local leftSlice = {}
+                        for i = 1, mid do
+                            leftSlice[#leftSlice + 1] = overflowItems[i]
                         end
+                        AddOverflowItemLinesToTooltip(AHVendorOverflowTooltip, leftSlice)
+                        AHVendorOverflowTooltip:Show()
 
-                        local iconText = itemTexture and string.format("|T%s:14:14:0:0:64:64:4:60:4:60|t ", itemTexture) or ""
-                        local displayName = BuildVendorDisplayName(itemData)
-                        local _, r, g, b = GetItemQualityColor(itemQuality or 1)
-                        r, g, b = r or 1, g or 1, b or 1
-                        AHVendorOverflowTooltip:AddLine(iconText .. displayName, r, g, b, true)
+                        AHVendorOverflowTooltipB:SetOwner(button, "ANCHOR_NONE")
+                        AHVendorOverflowTooltipB:ClearAllPoints()
+                        AHVendorOverflowTooltipB:SetPoint("TOPLEFT", self, "TOPRIGHT", 10, 0)
+                        AHVendorOverflowTooltipB:ClearLines()
+                        AHVendorOverflowTooltipB:SetText(string.format("Additional items (%d–%d of %d)", mid + 1, n, n), 1, 1, 0)
+                        local rightSlice = {}
+                        for i = mid + 1, n do
+                            rightSlice[#rightSlice + 1] = overflowItems[i]
+                        end
+                        AddOverflowItemLinesToTooltip(AHVendorOverflowTooltipB, rightSlice)
+                        AHVendorOverflowTooltipB:Show()
+                    else
+                        local anchorRight = AttuneHelperDB["Vendor preview on Right (Default On)"] ~= 0
+                        if data.overflowCount > 55 then
+                            anchorRight = false
+                        end
+                        if anchorRight then
+                            AHVendorOverflowTooltip:SetPoint("TOPLEFT", self, "TOPRIGHT", 10, 0)
+                        else
+                            AHVendorOverflowTooltip:SetPoint("TOPRIGHT", self, "TOPLEFT", -10, 0)
+                        end
+                        AHVendorOverflowTooltip:SetText(string.format("Additional items (%d)", data.overflowCount), 1, 1, 0)
+                        AddOverflowItemLinesToTooltip(AHVendorOverflowTooltip, overflowItems)
+                        AHVendorOverflowTooltip:Show()
                     end
-                    AHVendorOverflowTooltip:Show()
                 end)
                 self.button1:SetScript("OnLeave", function()
                     AHVendorOverflowTooltip:Hide()
+                    AHVendorOverflowTooltipB:Hide()
                 end)
             else
                 self.button1:SetScript("OnEnter", nil)
@@ -566,6 +605,7 @@ AH.SetupVendorDialog = function()
             self.button1:SetScript("OnEnter", nil)
             self.button1:SetScript("OnLeave", nil)
             AHVendorOverflowTooltip:Hide()
+            AHVendorOverflowTooltipB:Hide()
         end,
         timeout = 0,
         whileDead = 1,
