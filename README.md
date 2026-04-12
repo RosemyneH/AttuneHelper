@@ -1,8 +1,5 @@
-# AttuneHelper
-
-> **ʕ •ᴥ•ʔ✿ Automatically Swaps Gear To Streamline Attunement ✿ ʕ •ᴥ•ʔ**
-
-A powerful WoW addon designed to streamline the attunement process by automatically managing your gear swaps. Perfect for players who want to focus on gameplay rather than inventory management during attunement quests.
+![ah-banner](https://github.com/user-attachments/assets/d9f61f77-13b2-488b-b4f6-a243ae400666)
+Automaticly handles new attunes and your gear sets for quick and seamless gaming!
 
 ## ✨ Features
 
@@ -21,27 +18,23 @@ A powerful WoW addon designed to streamline the attunement process by automatica
 - **Theme System** - Multiple visual themes to match your UI preferences
 - **Slot Blacklisting** - Prevent specific slots from being auto-equipped
 - **Item Ignore List** - Exclude specific items from automatic equipping
-- **Performance Monitoring** - Built-in memory usage tracking and cleanup
 
 ### 🔧 Advanced Features
 - **Vendor Integration** - Automatically sell attuned items when visiting vendors
 - **Equipment Sets** - Create and manage custom equipment configurations
-- **Performance Optimization** - Intelligent caching reduces memory usage
-- **Debug Tools** - Comprehensive logging and troubleshooting options
 
 ## 🚀 Installation
-
 1. **Download** the latest release from the repository
-2. **Extract** the `AttuneHelper` folder to your `World of Warcraft/Interface/AddOns/` directory
-3. **Restart** World of Warcraft or reload your UI (`/reload`)
-4. **Configure** your preferences using `/ah help` to see available options
+2. **Extract** the `AttuneHelper` folder to your `Synastria/Interface/AddOns/` directory
+3. **Restart** World of Warcraft
+4. **Customize** to your heart contents
+<img width="660" height="302" alt="image" src="https://github.com/user-attachments/assets/b84507b4-44b3-4bf6-ab07-e7c2a7c5d87f" />
 
 ### 📋 Requirements
 - **WoW Version:** 3.3.5a (WotLK)
 - Synastria.org
 
 ## 📖 Usage Guide
-
 ### Getting Started
 1. Type `/ah` to open the main interface
 2. Use `/ah help` to see all available commands
@@ -53,14 +46,14 @@ A powerful WoW addon designed to streamline the attunement process by automatica
 /ah show          # Show the main interface
 /ah toggle        # Toggle auto-equip after combat
 /ah weapons       # View weapon type settings
-/ah memory        # Check performance stats
 ```
 
 ## 🎮 Slash Commands
-
 ### 🎯 Main Commands
 | Command | Description |
 |---------|-------------|
+| `/AHIgnore itemLink` | Causes AttuneHelper to not sell the arg1 item |
+| `/AHSet` | Sets ur current AHSet Preset to be replaced for x slot |
 | `/ah` | Main command with various subcommands |
 | `/ah help` | Show all available commands |
 | `/ah show` | Show AttuneHelper frame |
@@ -72,7 +65,6 @@ A powerful WoW addon designed to streamline the attunement process by automatica
 |---------|-------------|
 | `/ah toggle` | Toggle auto-equip after combat |
 | `/ahtoggle` | Alias for toggle auto-equip |
-| `/ah equip <slot>` | Manually equip items for specific slot |
 
 ### 🖥️ Display Mode
 | Command | Description |
@@ -107,24 +99,6 @@ A powerful WoW addon designed to streamline the attunement process by automatica
 | `/ahbl <slot>` | Short version of slot blacklist |
 | `/ahbll` | List all blacklisted slots |
 
-### 🔍 Performance & Debug
-| Command | Description |
-|---------|-------------|
-| `/ah memory` | Show memory usage statistics |
-| `/ah cleanup` | Force memory cleanup |
-
-### 🎨 UI Controls
-| Command | Description |
-|---------|-------------|
-| `/ah hidede` | Toggle disenchant button visibility |
-
-### 🔄 Legacy Commands
-| Command | Description |
-|---------|-------------|
-| `/ah2h` | Toggle 2H weapon equipping (legacy) |
-| `/AHIgnore` | Legacy ignore command |
-| `/AHSet` | Legacy set command |
-
 ## 🎯 Slot Keywords
 
 When using slot-specific commands, you can use these intuitive keywords:
@@ -152,50 +126,12 @@ When using slot-specific commands, you can use these intuitive keywords:
 - `trinket1` → **Trinket0Slot**
 - `trinket2` → **Trinket1Slot**
 
-## 💡 Tips & Tricks
-
-### 🎯 Optimizing Performance
-- Use `/ah memory` regularly to monitor memory usage
-- Run `/ah cleanup` if you notice performance issues
-- Consider using mini-mode for better performance
-
-### ⚔️ Weapon Management
-- Use `/ah weapons` to review your current settings
-- Disable weapon types you don't want auto-equipped
-- Combine with slot blacklisting for precise control
-
-### 📦 Equipment Sets
-- Use `/ahsetall` to quickly capture your current gear
-- Review your sets with `/ahsetlist`
-- Remove unwanted items with `/ahset remove`
-
-### 🚫 Advanced Filtering
-- Blacklist slots that should never be auto-equipped
-- Use the ignore list for specific items
-- Combine multiple filters for precise control
-
-## 🔧 Configuration
-
-### Interface Options
-Access the addon's configuration through:
-1. **Interface Options** → **AddOns** → **AttuneHelper**
-2. **General Settings** - Core functionality options
-3. **Weapon Controls** - Fine-tune weapon type preferences
-4. **Theme Options** - Customize visual appearance
-
-### Saved Variables
-The addon automatically saves your preferences:
-- **Global Settings** - Shared across all characters
-- **Character Settings** - Specific to each character
-- **Equipment Sets** - Custom gear configurations
-- **Ignore Lists** - Items to exclude from auto-equipping
 
 ## 🐛 Troubleshooting
 
 ### Common Issues
 - **Addon not appearing in Interface Options** → Reload UI with `/reload`
 - **Commands not working** → Check if addon is enabled
-- **Performance issues** → Use `/ah cleanup` and `/ah memory`
 - **Weapons not equipping** → Check weapon type settings with `/ah weapons`
 
 ### Getting Help
@@ -204,14 +140,6 @@ The addon automatically saves your preferences:
 3. Monitor performance with `/ah memory`
 4. Review your configuration in Interface Options
 
-## 📝 Changelog
-
-### Version 1.4.0-Dev
-- ✨ Added comprehensive weapon type controls
-- 🎨 Enhanced theme customization options
-- 🔧 Improved performance with optimized caching
-- 📚 Updated documentation and command reference
-- 🐛 Fixed various UI and functionality issues
 
 ## 🤝 Contributing
 
@@ -220,7 +148,3 @@ Contributions are welcome! Please feel free to submit issues, feature requests, 
 ## 📄 License
 
 This project is open source and available under the appropriate license terms.
-
----
-
-**ʕ •ᴥ•ʔ✿ Happy Attuning! ✿ ʕ •ᴥ•ʔ**
