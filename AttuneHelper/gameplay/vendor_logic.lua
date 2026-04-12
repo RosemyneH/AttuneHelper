@@ -3,6 +3,14 @@ local AH = _G.AttuneHelper
 local AHVendorOverflowTooltip = CreateFrame("GameTooltip", "AHVendorOverflowTooltip", UIParent, "GameTooltipTemplate")
 AHVendorOverflowTooltip:SetFrameStrata("TOOLTIP")
 AHVendorOverflowTooltip:SetClampedToScreen(true)
+local AHVendorOverflowTooltipB = CreateFrame("GameTooltip", "AHVendorOverflowTooltipB", UIParent, "GameTooltipTemplate")
+AHVendorOverflowTooltipB:SetFrameStrata("TOOLTIP")
+AHVendorOverflowTooltipB:SetClampedToScreen(true)
+local FORGE_BADGE_COLORS = {
+    TF = "|cff8080FF",
+    WF = "|cffFFA680",
+    LF = "|cffFFFFA6"
+}
 local vendorListCache = {
     generation = -1,
     timestamp = 0,
@@ -11,14 +19,22 @@ local vendorListCache = {
 }
 local VENDOR_LIST_CACHE_TTL = 0.5
 
+function AH.InvalidateVendorListCache()
+    vendorListCache.generation = -1
+    vendorListCache.timestamp = 0
+    vendorListCache.key = ""
+    vendorListCache.data = {}
+end
+_G.InvalidateVendorListCache = AH.InvalidateVendorListCache
+
 local function GetForgeBadgeText(itemLink)
     local forgeLevel = AH.GetForgeLevelFromLink and AH.GetForgeLevelFromLink(itemLink) or 0
     if forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.WARFORGED or 2) then
-        return "|cffFFA680[WF]|r"
+        return FORGE_BADGE_COLORS.WF .. "[WF]|r"
     elseif forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.LIGHTFORGED or 3) then
-        return "|cffFFFFA6[LF]|r"
+        return FORGE_BADGE_COLORS.LF .. "[LF]|r"
     elseif forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.TITANFORGED or 1) then
-        return "|cff8080FF[TF]|r"
+        return FORGE_BADGE_COLORS.TF .. "[TF]|r"
     end
     return ""
 end
@@ -30,11 +46,46 @@ local function BuildVendorDisplayName(itemData)
 
     local badgeText = GetForgeBadgeText(itemData.link)
     local baseName = itemData.link or itemData.name or "Unknown Item"
+    if itemData.alwaysVendored then
+        baseName = baseName .. " |cff80ff80[Always]|r"
+    end
+    if itemData.deleteInstead then
+        baseName = baseName .. " |cffff6060[Delete]|r"
+    end
     if badgeText ~= "" then
         return badgeText .. " " .. baseName
     end
     return baseName
 end
+
+local function AddOverflowItemLinesToTooltip(tooltip, itemList)
+    for _, itemData in ipairs(itemList) do
+        local _, _, itemQuality, _, _, _, _, _, _, itemTexture = GetItemInfo(itemData.link)
+        if (not itemTexture) and itemData.bag and itemData.slot then
+            local _, _, _, _, _, _, _, _, _, containerTexture = GetContainerItemInfo(itemData.bag, itemData.slot)
+            itemTexture = containerTexture
+        end
+
+        local iconText = itemTexture and string.format("|T%s:14:14:0:0:64:64:4:60:4:60|t ", itemTexture) or ""
+        local displayName = BuildVendorDisplayName(itemData)
+        local _, r, g, b = GetItemQualityColor(itemQuality or 1)
+        r, g, b = r or 1, g or 1, b or 1
+        tooltip:AddLine(iconText .. displayName, r, g, b, true)
+    end
+end
+
+local function GetAlwaysVendorKey(itemID)
+    if not itemID then
+        return nil
+    end
+    return "id:" .. tostring(itemID)
+end
+
+function AH.IsItemAlwaysVendored(itemID)
+    local key = GetAlwaysVendorKey(itemID)
+    return key and AHVendorList and AHVendorList[key] == true or false
+end
+_G.IsItemAlwaysVendored = AH.IsItemAlwaysVendored
 
 ------------------------------------------------------------------------
 -- Get items that qualify for vendoring based on settings
@@ -43,11 +94,20 @@ function AH.GetQualifyingVendorItems()
     local generation = AH.bagCacheGeneration or 0
     local useGreyWhiteVendorRules = (AttuneHelperDB["Do Not Sell Grey And White Items"] ~= 1)
     local includeBank = (BankFrame and BankFrame:IsShown()) and 1 or 0
+    local alwaysVendorCount = 0
+    if type(AHVendorList) == "table" then
+        for key, enabled in pairs(AHVendorList) do
+            if enabled == true and type(key) == "string" and string.find(key, "^id:", 1, false) then
+                alwaysVendorCount = alwaysVendorCount + 1
+            end
+        end
+    end
     local cacheKey = table.concat({
         tostring(useGreyWhiteVendorRules and 1 or 0),
         tostring(includeBank),
         tostring(AttuneHelperDB["Do Not Sell BoE Items"] or 0),
-        tostring(AttuneHelperDB["Sell Attuned Mythic Gear?"] or 0)
+        tostring(AttuneHelperDB["Sell Attuned Mythic Gear?"] or 0),
+        tostring(alwaysVendorCount)
     }, ":")
     local now = GetTime()
 
@@ -102,43 +162,53 @@ function AH.GetQualifyingVendorItems()
                     
                     local skip = false
                     local skipReason = ""
+                    local isAlwaysVendored = AH.IsItemAlwaysVendored and AH.IsItemAlwaysVendored(id)
+                    local deleteInstead = false
 
                     -- Sell price check
                     if not sellP or sellP == 0 then
-                        skip = true
-                        skipReason = "No/Zero sell price (" .. tostring(sellP) .. ")"
+                        if isAlwaysVendored then
+                            deleteInstead = true
+                        else
+                            skip = true
+                            skipReason = "No/Zero sell price (" .. tostring(sellP) .. ")"
+                        end
                     end
 
                     -- Double-check with container item info
-                    if not skip then
+                    if not skip and not deleteInstead then
                         local containerSuccess, _, itemCount, _, _, _, _, cLink = pcall(GetContainerItemInfo, b, s)
                         if containerSuccess and cLink then
                             local linkSuccess, _, _, _, _, _, _, _, _, _, cSellPrice = pcall(GetItemInfo, cLink)
                             if linkSuccess and (not cSellPrice or cSellPrice == 0) then
-                                skip = true
-                                skipReason = "Container check - No/Zero sell price"
+                                if isAlwaysVendored then
+                                    deleteInstead = true
+                                else
+                                    skip = true
+                                    skipReason = "Container check - No/Zero sell price"
+                                end
                             end
                         end
                     end
 
-                    if not skip and (AHIgnoreList[n] or AHIgnoreList["id:" .. tostring(id)]) then
+                    if not skip and (not isAlwaysVendored) and (AHIgnoreList[n] or AHIgnoreList["id:" .. tostring(id)]) then
                         skip = true
                         skipReason = "In AHIgnore list"
                     end
 
                     local setIdentifier = AH.CreateItemIdentifier(link, n)
-                    if not skip and (AHSetList[setIdentifier] or AHSetList[n]) then
+                    if not skip and (not isAlwaysVendored) and (AHSetList[setIdentifier] or AHSetList[n]) then
                         skip = true
                         skipReason = "In AHSet list"
                     end
 
-                    if not skip and AH.IsItemInEquipMgrFromNativeBagSlot and AH.IsItemInEquipMgrFromNativeBagSlot(b, s) then
+                    if not skip and (not isAlwaysVendored) and AH.IsItemInEquipMgrFromNativeBagSlot and AH.IsItemInEquipMgrFromNativeBagSlot(b, s) then
                         skip = true
                         skipReason = "In Equipment Set"
                     end
 
                     -- Check attunement progress unless grey/white special rules are enabled
-                    if not skip and ((q and q > 1) or (not useGreyWhiteVendorRules)) then
+                    if not skip and (not isAlwaysVendored) and ((q and q > 1) or (not useGreyWhiteVendorRules)) then
                         local thisVariantProgress = 0
                         if _G.GetItemLinkAttuneProgress then
                             local progressSuccess, progress = pcall(GetItemLinkAttuneProgress, link)
@@ -160,7 +230,7 @@ function AH.GetQualifyingVendorItems()
                         local isSoulbound = AH.IsSoulboundFromNativeBagSlot(b, s)
                         local isAttunableBySomeone = IsAttunableBySomeone(id)
 
-                        if (not isSoulbound) and isAttunableBySomeone then
+                        if (not isAlwaysVendored) and (not isSoulbound) and isAttunableBySomeone then
                             skip = true
                             skipReason = "Not soulbound and attunable by someone"
                         end
@@ -179,7 +249,18 @@ function AH.GetQualifyingVendorItems()
                             end
                         end
 
-                        if useGreyWhiteVendorRules and (q == 0 or q == 1) then
+                        if isAlwaysVendored then
+                            table.insert(itemsToVendor, {
+                                name = n,
+                                link = link,
+                                id = id,
+                                quality = q,
+                                bag = b,
+                                slot = s,
+                                alwaysVendored = true,
+                                deleteInstead = deleteInstead
+                            })
+                        elseif useGreyWhiteVendorRules and (q == 0 or q == 1) then
                             if shouldSellByQuality then
                                 table.insert(itemsToVendor, {
                                     name = n,
@@ -187,7 +268,8 @@ function AH.GetQualifyingVendorItems()
                                     id = id,
                                     quality = q,
                                     bag = b,
-                                    slot = s
+                                    slot = s,
+                                    alwaysVendored = false
                                 })
                                 --AH.print_debug_vendor_preview("GetQualifying: ✓ ADDING to vendor list: " .. n .. " (" .. qualityReason .. ")")
                             else
@@ -218,7 +300,8 @@ function AH.GetQualifyingVendorItems()
                                     id = id,
                                     quality = q,
                                     bag = b,
-                                    slot = s
+                                    slot = s,
+                                    alwaysVendored = false
                                 })
                                 --AH.print_debug_vendor_preview("GetQualifying: ✓ ADDING to vendor list: " .. n)
                             else
@@ -247,6 +330,41 @@ function AH.GetQualifyingVendorItems()
     return itemsToVendor
 end
 _G.GetQualifyingVendorItems = AH.GetQualifyingVendorItems
+
+function AH.AddCursorItemToAlwaysVendor()
+    if not CursorHasItem() then
+        return false
+    end
+
+    local cursorType, cursorID, cursorLink = GetCursorInfo()
+    if cursorType ~= "item" then
+        return false
+    end
+
+    local itemName = GetItemInfo(cursorLink or cursorID)
+    if not itemName or not cursorID then
+        return false
+    end
+
+    AHVendorList = AHVendorList or {}
+    local itemKey = GetAlwaysVendorKey(cursorID)
+    local isAlreadyAlwaysVendored = itemKey and AHVendorList[itemKey] == true
+
+    if isAlreadyAlwaysVendored then
+        AHVendorList[itemKey] = nil
+        print("|cffffd200[Attune Helper]|r Removed from always vendor list: " .. itemName)
+    else
+        AHVendorList[itemKey] = true
+        print("|cffffd200[Attune Helper]|r Added to always vendor list: " .. itemName)
+    end
+
+    if AH.InvalidateVendorListCache then
+        AH.InvalidateVendorListCache()
+    end
+    ClearCursor()
+    return true
+end
+_G.AddCursorItemToAlwaysVendor = AH.AddCursorItemToAlwaysVendor
 
 function AH.AddCursorItemToIgnore()
     if not CursorHasItem() then
@@ -280,6 +398,9 @@ function AH.AddCursorItemToIgnore()
         print("|cffffd200[Attune Helper]|r Added to ignore list: " .. itemName)
     end
 
+    if AH.InvalidateVendorListCache then
+        AH.InvalidateVendorListCache()
+    end
     ClearCursor()
     return true
 end
@@ -303,6 +424,7 @@ function AH.SellQualifiedItemsFromDialog(itemsToSellFromDialog)
     local configuredMaxSellCount = limitSelling and 12 or #itemsToSellFromDialog
     local maxSellCount = math.min(configuredMaxSellCount, maxItemsPerVendorPass)
     local soldCount = 0
+    local deletedCount = 0
 
     --AH.print_debug_vendor_preview("SellQualifiedItemsFromDialog: Attempting to sell up to " .. maxSellCount .. " items.")
 
@@ -311,17 +433,34 @@ function AH.SellQualifiedItemsFromDialog(itemsToSellFromDialog)
         if item and item.bag and item.slot then
             local currentItemLinkInSlot = GetContainerItemLink(item.bag, item.slot)
             if currentItemLinkInSlot and currentItemLinkInSlot == item.link then
-                UseContainerItem(item.bag, item.slot)
-                soldCount = soldCount + 1
                 local displayName = BuildVendorDisplayName(item)
-                print("|cffffd200[Attune Helper]|r Sold: " .. displayName)
-                --AH.print_debug_vendor_preview("SellQualifiedItemsFromDialog: Sold " .. displayName)
+                if item.deleteInstead then
+                    PickupContainerItem(item.bag, item.slot)
+                    if CursorHasItem() then
+                        DeleteCursorItem()
+                        ClearCursor()
+                        deletedCount = deletedCount + 1
+                        print("|cffff6060[Attune Helper]|r Deleted: " .. displayName)
+                    else
+                        ClearCursor()
+                    end
+                else
+                    UseContainerItem(item.bag, item.slot)
+                    soldCount = soldCount + 1
+                    print("|cffffd200[Attune Helper]|r Sold: " .. displayName)
+                    --AH.print_debug_vendor_preview("SellQualifiedItemsFromDialog: Sold " .. displayName)
+                end
             end
         end
     end
 
-    if soldCount > 0 then
-        DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffffd200[Attune Helper]|r Sold %d item(s).", soldCount))
+    if soldCount > 0 or deletedCount > 0 then
+        if soldCount > 0 then
+            DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffffd200[Attune Helper]|r Sold %d item(s).", soldCount))
+        end
+        if deletedCount > 0 then
+            DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffff6060[Attune Helper]|r Deleted %d no-value always-vendor item(s).", deletedCount))
+        end
         if #itemsToSellFromDialog > maxSellCount then
             local remainingCount = #itemsToSellFromDialog - maxSellCount
             DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffffd200[Attune Helper]|r Vendor safeguard: stopped at %d items to prevent packet disconnects. %d item(s) remain; click again to continue.", maxSellCount, remainingCount))
@@ -401,33 +540,53 @@ AH.SetupVendorDialog = function()
             local hasOverflow = data and data.overflowCount and data.overflowCount > 0
             if hasOverflow then
                 self.button1:SetScript("OnEnter", function(button)
+                    local overflowItems = data.overflowItems or {}
+                    local n = #overflowItems
                     AHVendorOverflowTooltip:SetOwner(button, "ANCHOR_NONE")
                     AHVendorOverflowTooltip:ClearAllPoints()
-                    if AttuneHelperDB["Vendor preview on Right (Default On)"] ~= 0 then
-                        AHVendorOverflowTooltip:SetPoint("TOPLEFT", self, "TOPRIGHT", 10, 0)
-                    else
-                        AHVendorOverflowTooltip:SetPoint("TOPRIGHT", self, "TOPLEFT", -10, 0)
-                    end
                     AHVendorOverflowTooltip:ClearLines()
-                    AHVendorOverflowTooltip:SetText(string.format("Additional items (%d)", data.overflowCount), 1, 1, 0)
+                    AHVendorOverflowTooltipB:Hide()
 
-                    for _, itemData in ipairs(data.overflowItems or {}) do
-                        local _, _, itemQuality, _, _, _, _, _, _, itemTexture = GetItemInfo(itemData.link)
-                        if (not itemTexture) and itemData.bag and itemData.slot then
-                            local _, _, _, _, _, _, _, _, _, containerTexture = GetContainerItemInfo(itemData.bag, itemData.slot)
-                            itemTexture = containerTexture
+                    if n >= 2 then
+                        local mid = math.floor(n / 2)
+                        AHVendorOverflowTooltip:SetPoint("TOPRIGHT", self, "TOPLEFT", -10, 0)
+                        AHVendorOverflowTooltip:SetText(string.format("Additional items (%d–%d of %d)", 1, mid, n), 1, 1, 0)
+                        local leftSlice = {}
+                        for i = 1, mid do
+                            leftSlice[#leftSlice + 1] = overflowItems[i]
                         end
+                        AddOverflowItemLinesToTooltip(AHVendorOverflowTooltip, leftSlice)
+                        AHVendorOverflowTooltip:Show()
 
-                        local iconText = itemTexture and string.format("|T%s:14:14:0:0:64:64:4:60:4:60|t ", itemTexture) or ""
-                        local displayName = BuildVendorDisplayName(itemData)
-                        local _, r, g, b = GetItemQualityColor(itemQuality or 1)
-                        r, g, b = r or 1, g or 1, b or 1
-                        AHVendorOverflowTooltip:AddLine(iconText .. displayName, r, g, b, true)
+                        AHVendorOverflowTooltipB:SetOwner(button, "ANCHOR_NONE")
+                        AHVendorOverflowTooltipB:ClearAllPoints()
+                        AHVendorOverflowTooltipB:SetPoint("TOPLEFT", self, "TOPRIGHT", 10, 0)
+                        AHVendorOverflowTooltipB:ClearLines()
+                        AHVendorOverflowTooltipB:SetText(string.format("Additional items (%d–%d of %d)", mid + 1, n, n), 1, 1, 0)
+                        local rightSlice = {}
+                        for i = mid + 1, n do
+                            rightSlice[#rightSlice + 1] = overflowItems[i]
+                        end
+                        AddOverflowItemLinesToTooltip(AHVendorOverflowTooltipB, rightSlice)
+                        AHVendorOverflowTooltipB:Show()
+                    else
+                        local anchorRight = AttuneHelperDB["Vendor preview on Right (Default On)"] ~= 0
+                        if data.overflowCount > 55 then
+                            anchorRight = false
+                        end
+                        if anchorRight then
+                            AHVendorOverflowTooltip:SetPoint("TOPLEFT", self, "TOPRIGHT", 10, 0)
+                        else
+                            AHVendorOverflowTooltip:SetPoint("TOPRIGHT", self, "TOPLEFT", -10, 0)
+                        end
+                        AHVendorOverflowTooltip:SetText(string.format("Additional items (%d)", data.overflowCount), 1, 1, 0)
+                        AddOverflowItemLinesToTooltip(AHVendorOverflowTooltip, overflowItems)
+                        AHVendorOverflowTooltip:Show()
                     end
-                    AHVendorOverflowTooltip:Show()
                 end)
                 self.button1:SetScript("OnLeave", function()
                     AHVendorOverflowTooltip:Hide()
+                    AHVendorOverflowTooltipB:Hide()
                 end)
             else
                 self.button1:SetScript("OnEnter", nil)
@@ -446,6 +605,7 @@ AH.SetupVendorDialog = function()
             self.button1:SetScript("OnEnter", nil)
             self.button1:SetScript("OnLeave", nil)
             AHVendorOverflowTooltip:Hide()
+            AHVendorOverflowTooltipB:Hide()
         end,
         timeout = 0,
         whileDead = 1,

@@ -1,16 +1,16 @@
 ## Interface: 30300
-## Title: Attune|cFFFFA500Helper|r - |cFFFFFF001.6.0a|r
+## Title: Attune|cFFFFA500Helper|r - |cFFFFFF001.7.0|r
 ## Notes: Automatically Swaps Gear To Streamline Attunement
 ## Author: Multiple People
-## Version: 1.6.0a
-## SavedVariables: AttuneHelperDB, AHIgnoreList
-## SavedVariablesPerCharacter: AHSetList, AHCharSettings
+## Version: 1.7.0
+## SavedVariables: AttuneHelperDB, AHIgnoreList, AHVendorList
 
 init.lua
 core\locale.lua
 core\debug.lua
 core\constants.lua
 core\util.lua
+core\char_profile.lua
 
 gameplay\item_checks.lua
 gameplay\bag_cache.lua

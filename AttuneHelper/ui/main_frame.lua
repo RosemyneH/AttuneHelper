@@ -34,10 +34,11 @@ function AH.ResolveDragTarget(widget)
         if current == AH.UI.mainFrame or current == AH.UI.miniFrame then
             return current
         end
-        if not current.GetParent then
-            break
+        if current.GetParent then
+            current = current:GetParent()
+        else
+            current = nil
         end
-        current = current:GetParent()
     end
     return nil
 end
@@ -200,7 +201,7 @@ function AH.CreateMainFrame()
     -- Export for legacy compatibility
     _G.AttuneHelper = frame
     _G.AttuneHelperItemCountText = itemCountText
-    
+
     print("|cff00ff00[AttuneHelper]|r Main frame created successfully. Frame: " .. tostring(frame))
     
     -- Show the frame by default (unless in mini mode)

@@ -52,8 +52,18 @@ SlashCmdList["ATTUNEHELPER"] = function(msg)
         if buttonToClick and buttonToClick:GetScript("OnClick") then
             buttonToClick:GetScript("OnClick")(buttonToClick)
         end
+    elseif cmd == "resetday" then
+        local ok = AH.ResetDailyAttuneSnapshot and AH.ResetDailyAttuneSnapshot()
+        if ok then
+            print("|cff00ff00[AttuneHelper]|r Daily attune snapshot reset to current server counts.")
+            if AH.RefreshVendorCompatButtons then
+                AH.RefreshVendorCompatButtons()
+            end
+        else
+            print("|cffffd200[AttuneHelper]|r Daily snapshot reset is waiting for stable server counts.")
+        end
     else
-        print("/ath show|hide|reset|equip|sort|vendor")
+        print("/ath show|hide|reset|resetday|equip|sort|vendor")
     end
 end
 
@@ -77,6 +87,11 @@ end
 SLASH_AHSET1 = "/AHSet"
 SlashCmdList["AHSET"] = function(msg)
     local itemLinkPart = msg:match("^%s*(.-)%s*$")
+    local onlyToken = itemLinkPart:match("^%s*(%S+)%s*$")
+    if onlyToken and onlyToken:lower() == "all" then
+        AH.SetAHSetToEquipped()
+        return
+    end
     local slotArg = ""
     local msgLower = itemLinkPart:lower()
 
@@ -91,7 +106,7 @@ SlashCmdList["AHSET"] = function(msg)
         ranged="RangedSlot"
     }
     local allInventorySlots = {
-        "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot", "ShirtSlot", "TabardSlot",
+        "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot",
         "WristSlot", "HandsSlot", "WaistSlot", "LegsSlot", "FeetSlot", "Finger0Slot", "Finger1Slot",
         "Trinket0Slot", "Trinket1Slot", "MainHandSlot", "SecondaryHandSlot", "RangedSlot"
     }
@@ -109,12 +124,11 @@ SlashCmdList["AHSET"] = function(msg)
 
     local foundKeyword = false
     for _, keyword in ipairs(knownKeywords) do
-        if msgLower:len() >= (keyword:len() + 1) and msgLower:sub(-(keyword:len() + 1)) == " " .. keyword then
+        if not foundKeyword and msgLower:len() >= (keyword:len() + 1) and msgLower:sub(-(keyword:len() + 1)) == " " .. keyword then
             slotArg = itemLinkPart:sub(-keyword:len())
             itemLinkPart = itemLinkPart:sub(1, itemLinkPart:len() - (keyword:len() + 1))
             itemLinkPart = itemLinkPart:match("^%s*(.-)%s*$") or ""
             foundKeyword = true
-            break
         end
     end
 
@@ -139,6 +153,8 @@ SlashCmdList["AHSET"] = function(msg)
             print("|cffffd200[AttuneHelper]|r '" .. itemName .. "' removed from AHSet.")
             for i=0,4 do AH.UpdateBagCache(i) end
             AH.UpdateItemCountText()
+            if AH.ForceSaveSettings then AH.ForceSaveSettings() end
+            if AH.RefreshListManagementPanel then AH.RefreshListManagementPanel() end
         else
             print("|cffffd200[AttuneHelper]|r '" .. itemName .. "' was not in AHSet.")
         end
@@ -154,10 +170,9 @@ SlashCmdList["AHSET"] = function(msg)
             slotArgIsAliasOrDirect = true
         else
             for _, validSlot in ipairs(allInventorySlots) do
-                if string.lower(validSlot) == processedSlotArg then
+                if not targetSlotName and string.lower(validSlot) == processedSlotArg then
                     targetSlotName = validSlot
                     slotArgIsAliasOrDirect = true
-                    break
                 end
             end
         end
@@ -203,6 +218,8 @@ SlashCmdList["AHSET"] = function(msg)
 
     for i=0,4 do AH.UpdateBagCache(i) end
     AH.UpdateItemCountText()
+    if AH.ForceSaveSettings then AH.ForceSaveSettings() end
+    if AH.RefreshListManagementPanel then AH.RefreshListManagementPanel() end
 end
 
 ------------------------------------------------------------------------
@@ -346,6 +363,7 @@ function AH.SlashCommand(msg)
         print("  |cffffd200/ah toggle|r - Toggle auto-equip after combat")
         print("  |cffffd200/ah togglemini|r - Toggle mini/full mode")
         print("  |cffffd200/ah reset|r - Reset frame positions to center")
+        print("  |cffffd200/ah resetday|r - Reset today's attune snapshot to current server counts")
         print("  |cffffd200/ah bag|r - Toggle disenchant target bag (0 or 1)")
         print("  |cffffd200/ah weapons|r - Show weapon control settings")
         print("  |cffffd200/ah blacklist <slot>|r - Toggle slot blacklist")
@@ -480,6 +498,19 @@ function AH.SlashCommand(msg)
     end
 
     -- ʕ •ᴥ•ʔ✿ Weapon type control commands ✿ ʕ •ᴥ•ʔ
+    if msg == "resetday" then
+        local ok = AH.ResetDailyAttuneSnapshot and AH.ResetDailyAttuneSnapshot()
+        if ok then
+            print("|cff00ff00[AttuneHelper]|r Daily attune snapshot reset to current server counts.")
+            if AH.RefreshVendorCompatButtons then
+                AH.RefreshVendorCompatButtons()
+            end
+        else
+            print("|cffffd200[AttuneHelper]|r Daily snapshot reset is waiting for stable server counts.")
+        end
+        return
+    end
+
     if msg == "weapons" then
         print("|cff00ff00[AttuneHelper]|r Weapon Type Settings:")
         print("|cff00ff00MainHand 1H:|r " .. (AH.GetWeaponControlSetting("Allow MainHand 1H Weapons") == 1 and "|cff00ff00Enabled|r" or "|cffff0000Disabled|r"))

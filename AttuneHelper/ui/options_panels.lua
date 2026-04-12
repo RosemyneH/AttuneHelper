@@ -9,6 +9,7 @@ AH.button_layout_option_controls = {}
 AH.forge_type_checkboxes = {}
 AH.forge_option_controls = {}
 AH.weapon_control_checkboxes = {}
+AH.list_management_controls = {}
 
 -- Export for legacy compatibility
 _G.blacklist_checkboxes = AH.blacklist_checkboxes
@@ -18,6 +19,590 @@ _G.button_layout_option_controls = AH.button_layout_option_controls
 _G.forge_type_checkboxes = AH.forge_type_checkboxes
 _G.forge_option_controls = AH.forge_option_controls
 _G.weapon_control_checkboxes = AH.weapon_control_checkboxes
+_G.list_management_controls = AH.list_management_controls
+
+local function BuildSortedKeyList(sourceTable, filterFn)
+    local entries = {}
+    if type(sourceTable) ~= "table" then
+        return entries
+    end
+
+    for key, value in pairs(sourceTable) do
+        if value and (not filterFn or filterFn(key, value)) then
+            table.insert(entries, key)
+        end
+    end
+
+    table.sort(entries, function(a, b)
+        return tostring(a):lower() < tostring(b):lower()
+    end)
+    return entries
+end
+
+local function GetAHIgnoreEntries()
+    return BuildSortedKeyList(AHIgnoreList)
+end
+
+local function GetAlwaysVendorEntries()
+    return BuildSortedKeyList(AHVendorList)
+end
+
+local function FormatListEntryLabel(listType, entry)
+    if listType == "ahset" then
+        local itemKey = type(entry) == "table" and entry.key or entry
+        local slotName = type(entry) == "table" and entry.value or nil
+        return string.format("%s  ->  %s", tostring(itemKey), tostring(slotName or ""))
+    end
+    return tostring(entry)
+end
+
+local function ListEntryKeyToItemId(entryKey)
+    if type(entryKey) ~= "string" then
+        return nil
+    end
+    local id = string.match(entryKey, "^id:(%d+)$")
+    if id then
+        return tonumber(id)
+    end
+    if AH.GetItemIDFromIdentifier then
+        return AH.GetItemIDFromIdentifier(entryKey)
+    end
+    return nil
+end
+
+local function ResolveIgnoreVendorListDisplay(entryKey)
+    local itemId = ListEntryKeyToItemId(entryKey)
+    local name, quality, iconTex
+    if itemId then
+        name, _, quality = GetItemInfo(itemId)
+        iconTex = AH.GetItemIconForId and AH.GetItemIconForId(itemId) or nil
+        if (not name or name == "") and type(GetItemInfoCustom) == "function" then
+            local n, _, q, _, _, _, _, _, _, tex = GetItemInfoCustom(itemId)
+            if n and n ~= "" then
+                name = n
+            end
+            if q ~= nil then
+                quality = q
+            end
+            if (not iconTex or iconTex == "") and tex and tex ~= "" then
+                iconTex = tex
+            end
+        end
+        if not name or name == "" then
+            name = "Item " .. tostring(itemId)
+        end
+    else
+        name, _, quality, _, _, _, _, _, _, iconTex = GetItemInfo(entryKey)
+        if (not name or name == "") and type(entryKey) == "string" then
+            name = entryKey
+        end
+        if not quality then
+            quality = 1
+        end
+    end
+    quality = tonumber(quality) or 0
+    if not iconTex or iconTex == "" then
+        iconTex = "Interface\\Icons\\INV_Misc_QuestionMark"
+    end
+    local r, g, b = GetItemQualityColor(quality)
+    return name, r, g, b, iconTex, itemId
+end
+
+local AHSET_SLOT_LABELS = {
+    HeadSlot = "Head",
+    NeckSlot = "Neck",
+    ShoulderSlot = "Shoulders",
+    BackSlot = "Back",
+    ChestSlot = "Chest",
+    ShirtSlot = "Shirt",
+    TabardSlot = "Tabard",
+    WristSlot = "Wrists",
+    HandsSlot = "Hands",
+    WaistSlot = "Waist",
+    LegsSlot = "Legs",
+    FeetSlot = "Feet",
+    Finger0Slot = "Ring 1",
+    Finger1Slot = "Ring 2",
+    Trinket0Slot = "Trinket 1",
+    Trinket1Slot = "Trinket 2",
+    MainHandSlot = "Main Hand",
+    SecondaryHandSlot = "Off Hand",
+    RangedSlot = "Ranged",
+}
+
+local AHSET_PAPER_LEFT = {
+    "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot", "WristSlot",
+}
+local AHSET_PAPER_RIGHT = {
+    "HandsSlot", "WaistSlot", "LegsSlot", "FeetSlot", "Finger0Slot", "Finger1Slot", "Trinket0Slot", "Trinket1Slot",
+}
+
+local function FindAHSetKeyForSlot(slotName)
+    if type(AHSetList) ~= "table" then
+        return nil
+    end
+    local fallback
+    for k, v in pairs(AHSetList) do
+        if v == slotName then
+            if type(k) == "string" and string.match(k, "|%d+$") then
+                return k
+            end
+            if not fallback then
+                fallback = k
+            end
+        end
+    end
+    return fallback
+end
+
+local function ElevateOpenDropDownLists()
+    local maxLevels = _G.UIDROPDOWNMENU_MAXLEVELS or 2
+    for i = 1, maxLevels do
+        local list = _G["DropDownList" .. i]
+        if list and list:IsShown() then
+            list:SetFrameStrata("TOOLTIP")
+            list:SetToplevel(true)
+        end
+    end
+end
+
+local function ElevateColorPickerStrata()
+    local cp = _G.ColorPickerFrame
+    if not cp then
+        return
+    end
+    cp:SetFrameStrata("TOOLTIP")
+    cp:SetToplevel(true)
+    local opacity = _G.ColorPickerFrameOpacitySlider or _G.OpacitySliderFrame
+    if opacity then
+        opacity:SetFrameStrata("TOOLTIP")
+        opacity:SetToplevel(true)
+    end
+end
+
+function AH.EnsureInterfaceOptionsTransientStrataHooks()
+    if AH._interfaceOptionsStrataHooksRegistered then
+        return
+    end
+    AH._interfaceOptionsStrataHooksRegistered = true
+    hooksecurefunc("ToggleDropDownMenu", function()
+        if InterfaceOptionsFrame and InterfaceOptionsFrame:IsShown() then
+            ElevateOpenDropDownLists()
+        end
+    end)
+end
+
+local function EnsureAHSetPresetPopups(onDataChanged)
+    if StaticPopupDialogs["ATTUNEHELPER_NEW_AHSET_PRESET"] then
+        return
+    end
+    StaticPopupDialogs["ATTUNEHELPER_NEW_AHSET_PRESET"] = {
+        text = "Enter a name for the new AHSet preset:",
+        button1 = OKAY,
+        button2 = CANCEL,
+        hasEditBox = 1,
+        maxLetters = 32,
+        OnShow = function(self)
+            self:SetFrameStrata("TOOLTIP")
+            self:SetToplevel(true)
+            self.editBox:SetText("")
+            self.editBox:SetFocus()
+        end,
+        OnAccept = function(self)
+            local ok, reason = AH.CreateAHPreset(self.editBox:GetText())
+            if not ok then
+                if reason == "duplicate" then
+                    print("|cffff0000[AttuneHelper]|r A preset with that name already exists.")
+                elseif reason == "invalid" then
+                    print("|cffff0000[AttuneHelper]|r Invalid preset name.")
+                end
+            elseif onDataChanged then
+                onDataChanged()
+            end
+        end,
+        timeout = 0,
+        whileDead = 1,
+        hideOnEscape = 1,
+    }
+
+    StaticPopupDialogs["ATTUNEHELPER_DELETE_AHSET_PRESET"] = {
+        text = "Delete AHSet preset \"%s\"?",
+        button1 = DELETE,
+        button2 = CANCEL,
+        OnShow = function(self)
+            self:SetFrameStrata("TOOLTIP")
+            self:SetToplevel(true)
+        end,
+        OnAccept = function()
+            local name = AH._pendingDeleteAHPreset
+            AH._pendingDeleteAHPreset = nil
+            if name and AH.DeleteAHPreset(name) and onDataChanged then
+                onDataChanged()
+            end
+        end,
+        OnCancel = function()
+            AH._pendingDeleteAHPreset = nil
+        end,
+        timeout = 0,
+        whileDead = 1,
+        hideOnEscape = 1,
+    }
+end
+
+local MANAGED_LIST_SECTION_SCROLL_HEIGHT = 318
+
+local function CreateAHSetPaperdollSlot(parent, slotName, x, y, slotSize)
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(slotSize, slotSize)
+    btn:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    btn.slotName = slotName
+    btn:EnableMouse(true)
+
+    local _, emptyTex = GetInventorySlotInfo(slotName)
+    btn.emptyTexture = emptyTex
+
+    local icon = btn:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("TOPLEFT", btn, "TOPLEFT", 1, -1)
+    icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    btn.icon = icon
+
+    local hi = btn:CreateTexture(nil, "HIGHLIGHT")
+    hi:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+    hi:SetBlendMode("ADD")
+    hi:SetAlpha(0.45)
+    hi:SetAllPoints()
+    btn:SetHighlightTexture(hi)
+
+    local emptyMarkHolder = CreateFrame("Frame", nil, btn)
+    emptyMarkHolder:SetAllPoints(btn)
+    emptyMarkHolder:SetFrameLevel(btn:GetFrameLevel() + 3)
+    emptyMarkHolder:SetScale(1.45)
+    local emptyMark = emptyMarkHolder:CreateFontString(nil, "OVERLAY", nil)
+    emptyMark:SetFont("Fonts\\FRIZQT__.TTF", 18, "OUTLINE")
+    emptyMark:SetPoint("CENTER", emptyMarkHolder, "CENTER", 0, -1)
+    emptyMark:SetText("!")
+    emptyMark:SetTextColor(1, 0.2, 0.2)
+    emptyMarkHolder:Hide()
+    btn.emptySlotMarkHolder = emptyMarkHolder
+
+    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    btn:SetScript("OnClick", function(self, button)
+        if button ~= "RightButton" then
+            return
+        end
+        local key = self.setKey
+        if key and AHSetList then
+            AHSetList[key] = nil
+            if AH.ForceSaveSettings then
+                AH.ForceSaveSettings()
+            end
+            if AH.RefreshListManagementPanel then
+                AH.RefreshListManagementPanel()
+            end
+        end
+    end)
+
+    btn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        if GameTooltip.ClearLines then
+            GameTooltip:ClearLines()
+        end
+        local slotLabel = AHSET_SLOT_LABELS[self.slotName] or self.slotName
+        if self.setKey then
+            local itemId = AH.GetItemIDFromIdentifier(self.setKey)
+            local fromBlizz = itemId and select(1, GetItemInfo(itemId))
+            if fromBlizz and itemId then
+                GameTooltip:SetHyperlink("item:" .. tostring(itemId))
+            else
+                local disp = itemId and AH.GetItemDisplayName and AH.GetItemDisplayName(itemId, nil)
+                if not disp then
+                    disp = AH.GetItemNameFromIdentifier and AH.GetItemNameFromIdentifier(self.setKey) or tostring(self.setKey)
+                end
+                local quality = 0
+                if itemId and type(GetItemInfoCustom) == "function" then
+                    local n, _, q = GetItemInfoCustom(itemId)
+                    if n then
+                        disp = n
+                    end
+                    quality = tonumber(q) or quality
+                end
+                local r, g, b = GetItemQualityColor(tonumber(quality) or 0)
+                GameTooltip:SetText(disp, r, g, b)
+                if itemId then
+                    GameTooltip:AddLine("Item ID " .. tostring(itemId), 0.55, 0.55, 0.55, false)
+                end
+            end
+            GameTooltip:AddLine(slotLabel, 0.75, 0.85, 1, false)
+            GameTooltip:AddLine("Right-click to remove from this preset.", 0.55, 0.85, 1, true)
+        else
+            GameTooltip:SetText(slotLabel, 1, 1, 1)
+            GameTooltip:AddLine("Empty slot — use Set AHSet or /ahset.", 0.65, 0.65, 0.7, true)
+        end
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", GameTooltip_Hide)
+
+    return btn
+end
+
+local function RefreshAHSetPaperdollSlots(slotButtons)
+    if not slotButtons then
+        return
+    end
+    for slotName, btn in pairs(slotButtons) do
+        local key = FindAHSetKeyForSlot(slotName)
+        btn.setKey = key
+        if key then
+            local itemId = AH.GetItemIDFromIdentifier(key)
+            local tex = itemId and AH.GetItemIconForId and AH.GetItemIconForId(itemId) or nil
+            if tex then
+                btn.icon:SetTexture(tex)
+                btn.icon:Show()
+            else
+                btn.icon:SetTexture(btn.emptyTexture or "Interface\\Icons\\INV_Misc_QuestionMark")
+                btn.icon:Show()
+            end
+        else
+            btn.icon:SetTexture(btn.emptyTexture or "Interface\\Icons\\INV_Misc_QuestionMark")
+            btn.icon:SetAlpha(0.35)
+            btn.icon:Show()
+        end
+        if key then
+            btn.icon:SetAlpha(1)
+        else
+            btn.icon:SetAlpha(0.35)
+        end
+        if btn.emptySlotMarkHolder then
+            if key then
+                btn.emptySlotMarkHolder:Hide()
+            else
+                btn.emptySlotMarkHolder:Show()
+            end
+        end
+    end
+end
+
+local function RemoveListEntry(listType, entry)
+    if listType == "ahset" then
+        if type(entry) == "table" and entry.key then
+            AHSetList[entry.key] = nil
+        end
+    elseif listType == "ignore" then
+        AHIgnoreList[entry] = nil
+        if AH.InvalidateVendorListCache then
+            AH.InvalidateVendorListCache()
+        end
+    elseif listType == "vendor" then
+        AHVendorList[entry] = nil
+        if AH.InvalidateVendorListCache then
+            AH.InvalidateVendorListCache()
+        end
+    end
+
+    if AH.ForceSaveSettings then
+        AH.ForceSaveSettings()
+    end
+    if AH.RefreshListManagementPanel then
+        AH.RefreshListManagementPanel()
+    end
+end
+
+local function CreateManagedListSection(parent, titleText, topAnchor, listType, entryProvider)
+    local section = CreateFrame("Frame", nil, parent)
+    section:SetHeight(MANAGED_LIST_SECTION_SCROLL_HEIGHT)
+    section:SetPoint("TOP", topAnchor, "BOTTOM", 0, -14)
+    section:SetPoint("LEFT", parent, "LEFT", 4, 0)
+    section:SetPoint("RIGHT", parent, "RIGHT", -10, 0)
+
+    local title = section:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    title:SetPoint("TOPLEFT", 0, 0)
+    title:SetText(titleText)
+
+    local baseName = string.format("%s%s", parent:GetName() or "AttuneHelperListManagementPanel", listType or "Section")
+    local scrollFrame = CreateFrame("ScrollFrame", baseName .. "ScrollFrame", section, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
+    scrollFrame:SetPoint("BOTTOMRIGHT", section, "BOTTOMRIGHT", -22, 0)
+
+    local content = CreateFrame("Frame", baseName .. "Content", scrollFrame)
+    content:SetWidth(400)
+    content:SetHeight(1)
+    scrollFrame:SetScrollChild(content)
+    section.content = content
+    section.scrollFrame = scrollFrame
+    section.rows = {}
+    section.entryProvider = entryProvider
+    section.listType = listType
+
+    return section
+end
+
+local function SyncManagedListSectionScrollWidth(section)
+    if not section or not section.scrollFrame or not section.content then
+        return
+    end
+    local cw = section.scrollFrame:GetWidth() - 8
+    if cw < 120 then
+        cw = 400
+    end
+    section.content:SetWidth(cw)
+    for _, row in ipairs(section.rows) do
+        if row then
+            row:SetWidth(cw)
+        end
+    end
+end
+
+local function RefreshManagedListSection(section)
+    if not section or not section.entryProvider then
+        return
+    end
+
+    SyncManagedListSectionScrollWidth(section)
+
+    local entries = section.entryProvider() or {}
+    local content = section.content
+    local rowW = content:GetWidth()
+    local rowHeight = 24
+    local visibleRows = math.max(#entries, 1)
+    content:SetHeight(visibleRows * rowHeight)
+
+    local rich = (section.listType == "ignore" or section.listType == "vendor")
+
+    for i = 1, visibleRows do
+        local row = section.rows[i]
+        if not row then
+            row = CreateFrame("Button", nil, content)
+            row:SetHeight(rowHeight)
+            if i == 1 then
+                row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+            else
+                row:SetPoint("TOPLEFT", section.rows[i - 1], "BOTTOMLEFT", 0, 0)
+            end
+
+            local bg = row:CreateTexture(nil, "BACKGROUND")
+            bg:SetAllPoints()
+            bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+            row.rowBg = bg
+
+            if rich then
+                local icon = row:CreateTexture(nil, "ARTWORK")
+                icon:SetSize(20, 20)
+                icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                icon:SetPoint("LEFT", row, "LEFT", 5, 0)
+                row.itemIcon = icon
+
+                local label = row:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+                label:SetPoint("LEFT", icon, "RIGHT", 6, 0)
+                label:SetPoint("RIGHT", row, "RIGHT", -66, 0)
+                label:SetJustifyH("LEFT")
+                row.label = label
+            else
+                local label = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+                label:SetPoint("LEFT", row, "LEFT", 6, 0)
+                label:SetWidth(360)
+                label:SetJustifyH("LEFT")
+                row.label = label
+            end
+
+            local removeButton = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+            removeButton:SetSize(58, 18)
+            removeButton:SetPoint("RIGHT", row, "RIGHT", -3, 0)
+            removeButton:SetText("Remove")
+            row.removeButton = removeButton
+
+            section.rows[i] = row
+        end
+
+        row:SetWidth(rowW)
+
+        local entry = entries[i]
+        if rich and row.rowBg then
+            if i % 2 == 0 then
+                row.rowBg:SetVertexColor(0.16, 0.16, 0.20, 0.92)
+            else
+                row.rowBg:SetVertexColor(0.10, 0.10, 0.14, 0.92)
+            end
+            row.rowBg:Show()
+        end
+
+        if entry then
+            if rich and row.itemIcon then
+                local dispName, r, g, b, tex, itemId = ResolveIgnoreVendorListDisplay(entry)
+                local tipName, tipR, tipG, tipB = dispName, r, g, b
+                local capEntry = entry
+                row.itemIcon:SetTexture(tex)
+                row.itemIcon:Show()
+                row.label:SetText(dispName)
+                row.label:SetTextColor(r, g, b)
+                row.entryItemId = itemId
+                row:EnableMouse(true)
+                row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+                row:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    local id = self.entryItemId
+                    if id and type(GetItemInfoCustom) == "function" and not select(1, GetItemInfo(id)) then
+                        GetItemInfoCustom(id)
+                    end
+                    if id and select(1, GetItemInfo(id)) then
+                        GameTooltip:SetHyperlink("item:" .. tostring(id))
+                    else
+                        GameTooltip:SetText(tipName, tipR, tipG, tipB)
+                        if id then
+                            GameTooltip:AddLine("Item ID " .. tostring(id), 0.55, 0.55, 0.55, false)
+                        end
+                    end
+                    GameTooltip:Show()
+                end)
+                row:SetScript("OnLeave", GameTooltip_Hide)
+                row:SetScript("OnClick", function(self, button)
+                    if button == "RightButton" then
+                        RemoveListEntry(section.listType, capEntry)
+                    end
+                end)
+            else
+                row.label:SetText(FormatListEntryLabel(section.listType, entry))
+                if row.itemIcon then
+                    row.itemIcon:Hide()
+                end
+                row:EnableMouse(false)
+                row:SetScript("OnEnter", nil)
+                row:SetScript("OnLeave", nil)
+                row:SetScript("OnClick", nil)
+            end
+            local capEntryBtn = entry
+            row.removeButton:SetScript("OnClick", function()
+                RemoveListEntry(section.listType, capEntryBtn)
+            end)
+            row:Show()
+        else
+            if rich and row.rowBg then
+                row.rowBg:SetVertexColor(0.07, 0.07, 0.09, 0.9)
+            end
+            row.label:SetText("No entries.")
+            row.label:SetTextColor(0.75, 0.75, 0.75)
+            if row.itemIcon then
+                row.itemIcon:Hide()
+            end
+            row.entryItemId = nil
+            row:EnableMouse(false)
+            row:SetScript("OnEnter", nil)
+            row:SetScript("OnLeave", nil)
+            row:SetScript("OnClick", nil)
+            row.removeButton:SetScript("OnClick", nil)
+            row.removeButton:Hide()
+            row:Show()
+        end
+
+        if entry then
+            row.removeButton:Show()
+        end
+    end
+
+    for i = visibleRows + 1, #section.rows do
+        section.rows[i]:Hide()
+    end
+end
 
 ------------------------------------------------------------------------
 -- Slot and option configuration
@@ -432,7 +1017,6 @@ function AH.ForceSaveSettings()
     for _, slotName in ipairs(blacklistSlots) do
         if AttuneHelperDB[slotName] ~= nil then
             hasAnyBlacklistSetting = true
-            break
         end
     end
     
@@ -774,6 +1358,7 @@ function AH.InitializeThemeOptions()
             a = AttuneHelperDB["Background Color"][4]
         }
         ColorPickerFrame:SetColorRGB(c[1], c[2], c[3])
+        ElevateColorPickerStrata()
         ColorPickerFrame:Show()
     end)
 
@@ -1113,6 +1698,282 @@ function AH.CreateThemeOptionsPanel(mainPanel)
     AH.InitializeThemeOptions()
 
     return themePanel
+end
+
+------------------------------------------------------------------------
+-- Create list management panel
+------------------------------------------------------------------------
+function AH.CreateListManagementPanel(mainPanel)
+    local listPanel = CreateFrame("Frame", "AttuneHelperListManagementPanel", mainPanel)
+    listPanel.name = "List Management"
+    listPanel.parent = mainPanel.name
+    InterfaceOptions_AddCategory(listPanel)
+
+    local title = listPanel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", 16, -16)
+    title:SetText("List Management")
+
+    local subtitle = listPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
+    subtitle:SetText("AHSet is stored per character (GUID). Presets swap the saved item-to-slot map. AHIgnore / Always Vendored are account-wide.")
+
+    local function refreshPresetDropdown(dd)
+        if not dd then
+            return
+        end
+        local activeName = AH.GetActiveAHPresetName and AH.GetActiveAHPresetName() or "Default"
+        UIDropDownMenu_Initialize(dd, function()
+            for _, name in ipairs(AH.GetAHPresetOrder and AH.GetAHPresetOrder() or { "Default" }) do
+                local presetName = name
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = string.format("|TInterface\\Icons\\INV_Misc_Bag_07:14:14:0:-1|t %s", presetName)
+                info.value = presetName
+                info.func = function()
+                    UIDropDownMenu_SetSelectedValue(dd, presetName)
+                    UIDropDownMenu_SetText(dd, string.format("|TInterface\\Icons\\INV_Misc_Bag_07:14:14:0:-1|t %s", presetName))
+                    if AH.SwitchAHPreset then
+                        AH.SwitchAHPreset(presetName)
+                    end
+                    if AH.RefreshListManagementPanel then
+                        AH.RefreshListManagementPanel()
+                    end
+                end
+                info.checked = (presetName == activeName)
+                UIDropDownMenu_AddButton(info)
+            end
+        end)
+        UIDropDownMenu_SetWidth(dd, 200)
+        UIDropDownMenu_SetText(dd, string.format("|TInterface\\Icons\\INV_Misc_Bag_07:14:14:0:-1|t %s", activeName))
+    end
+
+    local scroll = CreateFrame("ScrollFrame", "AttuneHelperListMgmtScroll", listPanel, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", -8, -10)
+    scroll:SetPoint("BOTTOMRIGHT", listPanel, "BOTTOMRIGHT", -4, 8)
+
+    local content = CreateFrame("Frame", "AttuneHelperListMgmtScrollChild", scroll)
+    content:SetWidth(560)
+    scroll:SetScrollChild(content)
+
+    local presetHead = CreateFrame("Frame", nil, content)
+    presetHead:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+    presetHead:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, 0)
+    presetHead:SetHeight(78)
+
+    local presetRowLabel = presetHead:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    presetRowLabel:SetPoint("TOP", presetHead, "TOP", 0, -6)
+    presetRowLabel:SetText("AHSet preset")
+
+    local presetDD = CreateFrame("Frame", "AttuneHelperAHPresetDropdown", presetHead, "UIDropDownMenuTemplate")
+    presetDD:SetPoint("TOP", presetRowLabel, "BOTTOM", 0, -6)
+
+    local presetBtnRowAnchor = CreateFrame("Frame", nil, presetHead)
+    presetBtnRowAnchor:SetSize(1, 1)
+    presetBtnRowAnchor:SetPoint("TOP", presetDD, "BOTTOM", 0, -10)
+
+    local newPresetBtn = CreateFrame("Button", nil, presetHead, "UIPanelButtonTemplate")
+    newPresetBtn:SetSize(60, 20)
+    newPresetBtn:SetText("New")
+
+    local delPresetBtn = CreateFrame("Button", nil, presetHead, "UIPanelButtonTemplate")
+    delPresetBtn:SetSize(60, 20)
+    delPresetBtn:SetText("Delete")
+
+    local matchEquippedBtn = CreateFrame("Button", nil, presetHead, "UIPanelButtonTemplate")
+    matchEquippedBtn:SetSize(96, 20)
+    matchEquippedBtn:SetText("Set AHSet")
+    local presetBtnRowWidth = 60 + 4 + 60 + 6 + 96
+    newPresetBtn:SetPoint("LEFT", presetBtnRowAnchor, "CENTER", -math.floor(presetBtnRowWidth / 2), 0)
+    delPresetBtn:SetPoint("LEFT", newPresetBtn, "RIGHT", 4, 0)
+    matchEquippedBtn:SetPoint("LEFT", delPresetBtn, "RIGHT", 6, 0)
+    matchEquippedBtn:SetScript("OnEnter", function(s)
+        GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Set AHSet (/ahsetall)", 1, 1, 1)
+        GameTooltip:AddLine("After confirmation, copies your equipped items into this preset.", 0.75, 0.75, 0.75, true)
+        GameTooltip:Show()
+    end)
+    matchEquippedBtn:SetScript("OnLeave", GameTooltip_Hide)
+    matchEquippedBtn:SetScript("OnClick", function()
+        StaticPopup_Show("ATTUNEHELPER_CONFIRM_UPDATE_AHSET")
+    end)
+
+    local mainBand = CreateFrame("Frame", nil, content)
+    mainBand:SetHeight(752)
+    mainBand:SetPoint("TOP", presetHead, "BOTTOM", 0, -10)
+    mainBand:SetPoint("LEFT", content, "LEFT", 4, 0)
+    mainBand:SetPoint("RIGHT", content, "RIGHT", -4, 0)
+
+    local leftPaperCol = CreateFrame("Frame", nil, mainBand)
+    leftPaperCol:SetWidth(58)
+    leftPaperCol:SetPoint("TOPLEFT", mainBand, "TOPLEFT", 0, -2)
+    leftPaperCol:SetPoint("BOTTOMLEFT", mainBand, "BOTTOMLEFT", 0, 2)
+
+    local rightPaperCol = CreateFrame("Frame", nil, mainBand)
+    rightPaperCol:SetWidth(58)
+    rightPaperCol:SetPoint("TOPRIGHT", mainBand, "TOPRIGHT", 0, -2)
+    rightPaperCol:SetPoint("BOTTOMRIGHT", mainBand, "BOTTOMRIGHT", 0, 2)
+
+    local listsColumn = CreateFrame("Frame", nil, mainBand)
+    listsColumn:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true,
+        tileSize = 16,
+        edgeSize = 12,
+        insets = { left = 5, right = 5, top = 5, bottom = 5 },
+    })
+    listsColumn:SetBackdropColor(0.06, 0.06, 0.08, 0.92)
+    listsColumn:SetPoint("TOPLEFT", leftPaperCol, "TOPRIGHT", 10, 0)
+    listsColumn:SetPoint("BOTTOMRIGHT", rightPaperCol, "BOTTOMLEFT", -10, 2)
+
+    local listsTop = CreateFrame("Frame", nil, listsColumn)
+    listsTop:SetHeight(1)
+    listsTop:SetPoint("TOPLEFT", listsColumn, "TOPLEFT", 8, -8)
+    listsTop:SetPoint("TOPRIGHT", listsColumn, "TOPRIGHT", -8, -8)
+
+    local paperLeft = CreateFrame("Frame", nil, leftPaperCol)
+    paperLeft:SetPoint("TOPLEFT", leftPaperCol, "TOPLEFT", 2, -4)
+    paperLeft:SetSize(52, 252)
+
+    local paperRight = CreateFrame("Frame", nil, rightPaperCol)
+    paperRight:SetPoint("TOPLEFT", rightPaperCol, "TOPLEFT", 2, -4)
+    paperRight:SetSize(52, 286)
+
+    local slotSize = 26
+    local step = 30
+    local slotButtons = {}
+    local ly = -4
+    local colX = 6
+    for i, slotName in ipairs(AHSET_PAPER_LEFT) do
+        slotButtons[slotName] = CreateAHSetPaperdollSlot(paperLeft, slotName, colX, ly - (i - 1) * step, slotSize)
+    end
+    for i, slotName in ipairs(AHSET_PAPER_RIGHT) do
+        slotButtons[slotName] = CreateAHSetPaperdollSlot(paperRight, slotName, colX, ly - (i - 1) * step, slotSize)
+    end
+
+    local mhY = ly - #AHSET_PAPER_LEFT * step - 8
+    slotButtons["MainHandSlot"] = CreateAHSetPaperdollSlot(paperLeft, "MainHandSlot", colX, mhY, slotSize)
+    slotButtons["SecondaryHandSlot"] = CreateAHSetPaperdollSlot(paperLeft, "SecondaryHandSlot", colX, mhY - step, slotSize)
+
+    local rngY = ly - #AHSET_PAPER_RIGHT * step - 8
+    slotButtons["RangedSlot"] = CreateAHSetPaperdollSlot(paperRight, "RangedSlot", colX, rngY, slotSize)
+
+    local paperBand = mainBand
+
+    local ignoreSection, vendorSection
+
+    local function RelayoutListManagementLayout()
+        if not scroll or not content then
+            return
+        end
+        local sw = scroll:GetWidth()
+        if not sw or sw < 80 then
+            sw = (listPanel:GetWidth() or 0) - 36
+        end
+        if sw < 240 then
+            sw = 560
+        end
+        local inner = math.max(240, sw - 26)
+        content:SetWidth(inner)
+        if ignoreSection then
+            SyncManagedListSectionScrollWidth(ignoreSection)
+        end
+        if vendorSection then
+            SyncManagedListSectionScrollWidth(vendorSection)
+        end
+        if scroll.UpdateScrollChildRect then
+            scroll:UpdateScrollChildRect()
+        end
+    end
+
+    local function onAHSetDataChanged()
+        refreshPresetDropdown(presetDD)
+        RefreshAHSetPaperdollSlots(slotButtons)
+        local an = AH.GetActiveAHPresetName and AH.GetActiveAHPresetName() or "Default"
+        UIDropDownMenu_SetText(presetDD, string.format("|TInterface\\Icons\\INV_Misc_Bag_07:14:14:0:-1|t %s", an))
+        local order = AH.GetAHPresetOrder and AH.GetAHPresetOrder() or {}
+        local active = AH.GetActiveAHPresetName and AH.GetActiveAHPresetName() or "Default"
+        if #order > 1 and active ~= "Default" then
+            delPresetBtn:Enable()
+        else
+            delPresetBtn:Disable()
+        end
+        RelayoutListManagementLayout()
+    end
+
+    EnsureAHSetPresetPopups(onAHSetDataChanged)
+
+    newPresetBtn:SetScript("OnClick", function()
+        StaticPopup_Show("ATTUNEHELPER_NEW_AHSET_PRESET")
+    end)
+
+    delPresetBtn:SetScript("OnClick", function()
+        local active = AH.GetActiveAHPresetName and AH.GetActiveAHPresetName() or "Default"
+        if active == "Default" then
+            return
+        end
+        local order = AH.GetAHPresetOrder and AH.GetAHPresetOrder() or {}
+        if #order <= 1 then
+            return
+        end
+        AH._pendingDeleteAHPreset = active
+        StaticPopup_Show("ATTUNEHELPER_DELETE_AHSET_PRESET", active)
+    end)
+
+    ignoreSection = CreateManagedListSection(listsColumn, "AHIgnore", listsTop, "ignore", GetAHIgnoreEntries)
+    vendorSection = CreateManagedListSection(listsColumn, "Always Vendored", ignoreSection, "vendor", GetAlwaysVendorEntries)
+
+    mainBand:SetFrameLevel(1)
+    listsColumn:SetFrameLevel(2)
+    presetHead:SetFrameLevel(100)
+
+    content:SetHeight(900)
+
+    AH.list_management_controls = {
+        panel = listPanel,
+        scrollFrame = scroll,
+        scrollContent = content,
+        presetHead = presetHead,
+        paperBand = paperBand,
+        ahsetPaper = paperLeft,
+        ahsetPaperRight = paperRight,
+        ahsetSlots = slotButtons,
+        presetDropdown = presetDD,
+        ignore = ignoreSection,
+        vendor = vendorSection,
+        Relayout = RelayoutListManagementLayout,
+    }
+
+    AH.RefreshListManagementPanel = function()
+        if not AH.list_management_controls then
+            return
+        end
+        if AH.BindAHSetListToActivePreset then
+            AH.BindAHSetListToActivePreset()
+        end
+        onAHSetDataChanged()
+        RefreshManagedListSection(AH.list_management_controls.ignore)
+        RefreshManagedListSection(AH.list_management_controls.vendor)
+    end
+
+    local function OnListMgmtScrollSized()
+        RelayoutListManagementLayout()
+        if AH.list_management_controls then
+            RefreshManagedListSection(AH.list_management_controls.ignore)
+            RefreshManagedListSection(AH.list_management_controls.vendor)
+        end
+    end
+
+    scroll:SetScript("OnSizeChanged", OnListMgmtScrollSized)
+
+    AH.RefreshListManagementPanel()
+
+    listPanel:SetScript("OnShow", function()
+        if AH.RefreshListManagementPanel then
+            AH.RefreshListManagementPanel()
+        end
+    end)
+
+    return listPanel
 end
 
 ------------------------------------------------------------------------
@@ -1608,6 +2469,7 @@ function AH.InitializeAllOptions()
     -- Create sub-panels
     local generalPanel = AH.CreateGeneralOptionsPanel(mainPanel)
     local themePanel = AH.CreateThemeOptionsPanel(mainPanel)
+    local listManagementPanel = AH.CreateListManagementPanel(mainPanel)
     local buttonLayoutPanel = AH.CreateButtonLayoutOptionsPanel(mainPanel)
     local blacklistPanel = AH.CreateBlacklistOptionsPanel(mainPanel)
     local forgePanel = AH.CreateForgeOptionsPanel(mainPanel)
@@ -1618,6 +2480,7 @@ function AH.InitializeAllOptions()
         main = mainPanel,
         general = generalPanel,
         theme = themePanel,
+        listManagement = listManagementPanel,
         buttonLayout = buttonLayoutPanel,
         blacklist = blacklistPanel,
         forge = forgePanel,
@@ -1626,6 +2489,10 @@ function AH.InitializeAllOptions()
     
     -- Setup event handlers
     AH.SetupPanelHandlers()
+
+    if AH.EnsureInterfaceOptionsTransientStrataHooks then
+        AH.EnsureInterfaceOptionsTransientStrataHooks()
+    end
     
     print("|cff00ff00[AttuneHelper]|r Options panels initialized successfully")
 end

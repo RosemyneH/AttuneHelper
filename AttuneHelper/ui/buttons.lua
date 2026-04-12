@@ -1,7 +1,31 @@
 -- ʕ •ᴥ•ʔ✿ UI · Main buttons ✿ ʕ •ᴥ•ʔ
 local AH = _G.AttuneHelper
+local todaysAttunesTooltipOverlays = setmetatable({}, { __mode = "k" })
 --ʕ •ᴥ•ʔ✿ Button layouts ✿ ʕ •ᴥ•ʔ
 local allButtons = { "equipAll", "openSettings", "vendor", "toggleAutoEquip", "AHSetUpdate", "sort", "equipAHSet" }
+local FORGE_BADGE_COLORS = {
+    TF = "|cff8080FF",
+    WF = "|cffFFA680",
+    LF = "|cffFFFFA6"
+}
+local DAILY_ATTUNES_THRESHOLDS = {
+    account = {
+        normal = { 20, 60, 80, 120, 180, 220 },
+        prestiged = { 40, 110, 150, 220, 320, 420 }
+    },
+    titanforged = {
+        normal = { 12, 20, 28, 36, 44, 52 },
+        prestiged = { 20, 32, 45, 60, 80, 100 }
+    },
+    warforged = {
+        normal = { 2, 3, 4, 5, 6, 8 },
+        prestiged = { 3, 5, 7, 10, 13, 16 }
+    },
+    lightforged = {
+        normal = { 1, 2, 3, 4, 5, 7 },
+        prestiged = { 2, 3, 5, 7, 9, 12 }
+    }
+}
 
 local function IsEquipAHSetReferencedInLayout()
     if not AttuneHelperDB then
@@ -331,7 +355,12 @@ local function UpdateButtonGroupVisibility(buttons, isMini)
         elseif shiftDown then
             stateKey = "Shift"
         end
-        local topKey, centerKey, bottomKey = GetCustomLayoutTrio(stateKey, showEquipAHSet)
+        local topKey, centerKey, bottomKey
+        if useCustomTwoButtonLayout then
+            topKey, bottomKey = GetCustomLayoutPair(stateKey, showEquipAHSet)
+        else
+            topKey, centerKey, bottomKey = GetCustomLayoutTrio(stateKey, showEquipAHSet)
+        end
         for _, key in ipairs(allButtons) do
             local btn = buttons[key]
             if btn then
@@ -552,6 +581,483 @@ function AH.CreateMiniIconButton(name, parent, iconPath, size, tooltipText)
     btn:Show()
 
     return btn
+end
+
+local function AddVendorPreviewLines(tooltip, itemsToVendor)
+    if #itemsToVendor > 0 then
+        tooltip:AddLine(string.format(AH.t("Items to be sold (%d):"), #itemsToVendor), 1, 1, 0)
+        for i = 1, #itemsToVendor do
+            local itemData = itemsToVendor[i]
+            local _, _, itemQuality, _, _, _, _, _, _, itemTexture = GetItemInfo(itemData.link)
+            if (not itemTexture) and itemData.bag and itemData.slot then
+                local _, _, _, _, _, _, _, _, _, containerTexture = GetContainerItemInfo(itemData.bag, itemData.slot)
+                itemTexture = containerTexture
+            end
+            local iconText = ""
+            if itemTexture then
+                iconText = string.format("|T%s:16:16:0:0:64:64:4:60:4:60|t ", itemTexture)
+            end
+            local qualityColor = ITEM_QUALITY_COLORS[itemQuality or 1]
+            local r, g, b = 0.8, 0.8, 0.8
+            if qualityColor then r, g, b = qualityColor.r, qualityColor.g, qualityColor.b end
+            local itemLabel = itemData.name
+            if itemData.alwaysVendored then
+                itemLabel = itemLabel .. " |cff80ff80[Always]|r"
+            end
+            if itemData.deleteInstead then
+                itemLabel = itemLabel .. " |cffff6060[Delete]|r"
+            end
+            tooltip:AddLine(iconText .. itemLabel, r, g, b, true)
+        end
+    else
+        tooltip:AddLine(AH.t("No items will be sold based on current settings."), 0.8, 0.8, 0.8, true)
+    end
+end
+
+local function SetVendorTooltip(button, tooltipAnchor)
+    GameTooltip:SetOwner(button, tooltipAnchor or "ANCHOR_RIGHT")
+    GameTooltip:SetText(AH.t("Vendor Attuned Items"))
+    local itemsToVendor = AH.GetQualifyingVendorItems and AH.GetQualifyingVendorItems() or {}
+    AddVendorPreviewLines(GameTooltip, itemsToVendor)
+
+    if not (AH.IsVendorWindowOpen and AH.IsVendorWindowOpen()) then
+        GameTooltip:AddLine(AH.t("Open merchant window to sell these items."), 1, 0.8, 0.2, true)
+    end
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine(AH.t("Drag an item and left-click to add it to AHIgnore."), 0.6, 0.9, 1, true)
+    GameTooltip:AddLine(AH.t("Hold Shift for additional options"), 0.7, 0.9, 1, true)
+    GameTooltip:Show()
+end
+
+local function SetAddToVendorTooltip(button, tooltipAnchor)
+    GameTooltip:SetOwner(button, tooltipAnchor or "ANCHOR_RIGHT")
+    GameTooltip:SetText(AH.t("Add To Vendor"))
+
+    GameTooltip:AddLine(AH.t("Drag an item here or pick it up and click to toggle always-vendor."), 1, 1, 1, true)
+    GameTooltip:AddLine(AH.t("Items added here are always included in AH vendor previews and selling."), 0.7, 0.9, 1, true)
+    GameTooltip:Show()
+end
+
+local function GetForgeBadgeColorCode(forgeShortName)
+    return FORGE_BADGE_COLORS[forgeShortName] or "|cffffffff"
+end
+
+local function GetTodaysAttunesColorCode(count, attuneType, isPrestiged)
+    count = tonumber(count) or 0
+    local bucket = DAILY_ATTUNES_THRESHOLDS[attuneType or "account"] or DAILY_ATTUNES_THRESHOLDS.account
+    local thresholds = (isPrestiged and bucket.prestiged) or bucket.normal
+    if count < thresholds[1] then
+        return "|cffff4040"
+    elseif count < thresholds[2] then
+        return "|cffff9a3d"
+    elseif count < thresholds[3] then
+        return "|cffffff40"
+    elseif count < thresholds[4] then
+        return "|cff40ff40"
+    elseif count < thresholds[5] then
+        return "|cff4da6ff"
+    elseif count < thresholds[6] then
+        return "|cffb266ff"
+    end
+    return "|cffd98cff"
+end
+
+local function BuildColoredTodaysAttunesValue(count, attuneType, isPrestiged)
+    local value = math.max(0, tonumber(count) or 0)
+    return string.format("%s%d|r", GetTodaysAttunesColorCode(value, attuneType, isPrestiged), value)
+end
+
+local function IsPrestigedForDailyBreakdown()
+    return type(CMCGetMultiClassEnabled) == "function" and (CMCGetMultiClassEnabled() or 1) >= 2
+end
+
+function AH.GetTodaysAttunesBreakdownForDisplay()
+    local breakdown = AH.GetTodaysAttuneBreakdown and AH.GetTodaysAttuneBreakdown() or {}
+    local isPrestiged = IsPrestigedForDailyBreakdown()
+    return {
+        ready = breakdown.ready == true,
+        account = tonumber(breakdown.account) or 0,
+        titanforged = tonumber(breakdown.titanforged) or 0,
+        warforged = tonumber(breakdown.warforged) or 0,
+        lightforged = tonumber(breakdown.lightforged) or 0,
+        isPrestiged = isPrestiged
+    }
+end
+
+function AH.GetTodaysAttunesDelta()
+    local breakdown = AH.GetTodaysAttunesBreakdownForDisplay and AH.GetTodaysAttunesBreakdownForDisplay() or {}
+    return math.max(0, tonumber(breakdown.account) or 0)
+end
+
+function AH.GetTodaysAttunesMerchantLabel()
+    local delta = AH.GetTodaysAttunesDelta and AH.GetTodaysAttunesDelta() or 0
+    local breakdown = AH.GetTodaysAttunesBreakdownForDisplay and AH.GetTodaysAttunesBreakdownForDisplay() or {}
+    local colorCode = GetTodaysAttunesColorCode(delta, "account", breakdown.isPrestiged)
+    return string.format("%s\n%s%d|r", AH.t("Daily Attuned"), colorCode, delta)
+end
+
+function AH.AddTodaysAttunesTooltipLines(tooltip)
+    if not tooltip then
+        return
+    end
+
+    local breakdown = AH.GetTodaysAttunesBreakdownForDisplay and AH.GetTodaysAttunesBreakdownForDisplay() or {}
+    tooltip:AddLine(AH.t("Daily Attuned"), 1, 0.82, 0.2)
+
+    if not breakdown.ready then
+        tooltip:AddLine(AH.t("Daily snapshot pending item data load."), 0.85, 0.85, 0.85, true)
+        return
+    end
+
+    local isPrestiged = breakdown.isPrestiged == true
+    tooltip:AddLine(string.format("Account: %s", BuildColoredTodaysAttunesValue(breakdown.account or 0, "account", isPrestiged)), 1, 1, 1, true)
+    tooltip:AddLine(string.format("Titanforged: %s", BuildColoredTodaysAttunesValue(breakdown.titanforged or 0, "titanforged", isPrestiged)), 1, 1, 1, true)
+    tooltip:AddLine(string.format("Warforged: %s", BuildColoredTodaysAttunesValue(breakdown.warforged or 0, "warforged", isPrestiged)), 1, 1, 1, true)
+    tooltip:AddLine(string.format("Lightforged: %s", BuildColoredTodaysAttunesValue(breakdown.lightforged or 0, "lightforged", isPrestiged)), 1, 1, 1, true)
+end
+
+function AH.AttachTodaysAttunesTooltip(region, tooltipAnchor)
+    if not region then
+        return
+    end
+
+    local target = region
+    if not region.EnableMouse then
+        local overlay = todaysAttunesTooltipOverlays[region]
+        local parent = region.GetParent and region:GetParent() or nil
+        if not overlay and parent then
+            overlay = CreateFrame("Frame", nil, parent)
+            overlay:SetFrameStrata(parent:GetFrameStrata() or "MEDIUM")
+            overlay:SetFrameLevel((parent:GetFrameLevel() or 1) + 10)
+            todaysAttunesTooltipOverlays[region] = overlay
+        end
+        if not overlay then
+            return
+        end
+
+        local width = math.max(1, math.ceil((region.GetStringWidth and region:GetStringWidth()) or 0) + 8)
+        local height = math.max(1, math.ceil((region.GetStringHeight and region:GetStringHeight()) or 0) + 6)
+        overlay:ClearAllPoints()
+        overlay:SetPoint("CENTER", region, "CENTER", 0, 0)
+        overlay:SetSize(width, height)
+        overlay:EnableMouse(true)
+        overlay:Show()
+        target = overlay
+    else
+        region:EnableMouse(true)
+    end
+
+    target:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, tooltipAnchor or "ANCHOR_RIGHT")
+        AH.AddTodaysAttunesTooltipLines(GameTooltip)
+        GameTooltip:Show()
+    end)
+    target:SetScript("OnLeave", GameTooltip_Hide)
+end
+
+local function EnsureScootsQuickBuybackLabelHooks(quickBuyback)
+    if not quickBuyback or quickBuyback.AHQuickBuybackLabelHooks then
+        return
+    end
+    quickBuyback.AHQuickBuybackLabelHooks = true
+    quickBuyback:HookScript("OnShow", function()
+        if AH.RefreshVendorCompatButtons then
+            AH.Wait(0, AH.RefreshVendorCompatButtons)
+        end
+    end)
+    quickBuyback:HookScript("OnHide", function()
+        if AH.RefreshVendorCompatButtons then
+            AH.Wait(0, AH.RefreshVendorCompatButtons)
+        end
+    end)
+end
+
+local function EnsureScootsTodaysAttunesLabel(parentFrame)
+    if not parentFrame then
+        return nil
+    end
+
+    local label = _G.AttuneHelperScootsTodaysAttunesText
+    if not label then
+        label = parentFrame:CreateFontString("AttuneHelperScootsTodaysAttunesText", "ARTWORK", "GameFontNormal")
+        label:SetJustifyH("LEFT")
+        label:SetSpacing(2)
+    elseif label:GetParent() ~= parentFrame then
+        label:SetParent(parentFrame)
+    end
+
+    label:ClearAllPoints()
+    local quickBuyback = _G["ScootsVendor-QuickBuyback"]
+    if quickBuyback and quickBuyback.IsShown and quickBuyback:IsShown() then
+        label:SetPoint("TOPLEFT", quickBuyback, "TOPRIGHT", 8, 0)
+    else
+        label:SetPoint("TOPLEFT", parentFrame, "TOPLEFT", 76, -35)
+    end
+    label:SetText((AH.GetTodaysAttunesMerchantLabel and AH.GetTodaysAttunesMerchantLabel()) or AH.t("Vendor Attuned"))
+    if AH.AttachTodaysAttunesTooltip then
+        AH.AttachTodaysAttunesTooltip(label, "ANCHOR_TOPRIGHT")
+    end
+    label:Show()
+    return label
+end
+
+function AH.ApplyVendorButtonBehavior(button, tooltipAnchor)
+    if not button then
+        return
+    end
+
+    button:RegisterForClicks("LeftButtonUp")
+    button:SetScript("OnClick", function(self)
+        if CursorHasItem() and AH.AddCursorItemToIgnore and AH.AddCursorItemToIgnore() then
+            return
+        end
+        AH.VendorAttunedItems(self)
+    end)
+    button:SetScript("OnReceiveDrag", function()
+        if AH.AddCursorItemToIgnore then
+            AH.AddCursorItemToIgnore()
+        end
+    end)
+    button:SetScript("OnEnter", function(self)
+        SetVendorTooltip(self, tooltipAnchor)
+    end)
+    button:SetScript("OnLeave", GameTooltip_Hide)
+end
+
+function AH.ApplyAddToVendorButtonBehavior(button, tooltipAnchor)
+    if not button then
+        return
+    end
+
+    button:RegisterForClicks("LeftButtonUp")
+    button:SetScript("OnClick", function()
+        if AH.AddCursorItemToAlwaysVendor then
+            AH.AddCursorItemToAlwaysVendor()
+        end
+    end)
+    button:SetScript("OnReceiveDrag", function()
+        if AH.AddCursorItemToAlwaysVendor then
+            AH.AddCursorItemToAlwaysVendor()
+        end
+    end)
+    button:SetScript("OnEnter", function(self)
+        SetAddToVendorTooltip(self, tooltipAnchor)
+    end)
+    button:SetScript("OnLeave", GameTooltip_Hide)
+end
+
+local function ApplyCompatMicroButtonStyle(button, iconPath, styleVariant)
+    if not button then
+        return
+    end
+
+    button:SetScale(1)
+
+    local normal = button.AHNormalTexture or button:CreateTexture(nil, "BACKGROUND")
+    normal:SetTexture("Interface\\Buttons\\UI-MicroButton-Character-Up")
+    normal:SetAllPoints(button)
+    button:SetNormalTexture(normal)
+    button.AHNormalTexture = normal
+
+    local pushed = button.AHPushedTexture or button:CreateTexture(nil, "BACKGROUND")
+    pushed:SetTexture("Interface\\Buttons\\UI-MicroButton-Character-Down")
+    pushed:SetAllPoints(button)
+    button:SetPushedTexture(pushed)
+    button.AHPushedTexture = pushed
+
+    local highlight = button.AHHighlightTexture or button:CreateTexture(nil, "HIGHLIGHT")
+    highlight:ClearAllPoints()
+    if styleVariant == "scoots" then
+        highlight:SetTexture("Interface\\Buttons\\WHITE8X8")
+        highlight:SetVertexColor(1, 0.82, 0, 0.18)
+        highlight:SetBlendMode("ADD")
+        highlight:SetPoint("TOPLEFT", button, "TOPLEFT", 1, -1)
+        highlight:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
+    else
+        highlight:SetTexture("Interface\\Buttons\\WHITE8X8")
+        highlight:SetVertexColor(1, 0.82, 0, 0.14)
+        highlight:SetBlendMode("ADD")
+        highlight:SetPoint("TOPLEFT", button, "TOPLEFT", 1, -1)
+        highlight:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
+    end
+    button:SetHighlightTexture(highlight)
+    button.AHHighlightTexture = highlight
+
+    local disabled = button.AHDisabledTexture or button:CreateTexture(nil, "BACKGROUND")
+    disabled:SetTexture("Interface\\Buttons\\UI-MicroButton-Character-Disabled")
+    disabled:SetAllPoints(button)
+    button:SetDisabledTexture(disabled)
+    button.AHDisabledTexture = disabled
+
+    local icon = button.AHCompatIcon or button:CreateTexture(nil, "ARTWORK")
+    icon:SetTexture(iconPath or "Interface\\AddOns\\AttuneHelper\\assets\\icon_vendor-attuned.blp")
+    icon:ClearAllPoints()
+    local iconSize = math.max(16, math.floor(math.min(button:GetWidth(), button:GetHeight()) * 0.85))
+    icon:SetSize(iconSize, iconSize)
+    icon:SetPoint("CENTER", button, "CENTER", 0, 0)
+    button.AHCompatIcon = icon
+end
+
+local function CreateOrReuseCompatButton(name, parent, tooltipAnchor, iconPath, applyBehavior)
+    if not parent then
+        return nil
+    end
+
+    local button = _G[name]
+    if not button then
+        button = CreateFrame("Button", name, parent)
+    elseif button:GetParent() ~= parent then
+        button:SetParent(parent)
+    end
+
+    button:SetFrameStrata(parent:GetFrameStrata())
+    button:SetFrameLevel(parent:GetFrameLevel() + 10)
+    ApplyCompatMicroButtonStyle(button, iconPath, button.AHStyleVariant)
+    if applyBehavior then
+        applyBehavior(button, tooltipAnchor)
+    end
+    button:Show()
+    return button
+end
+
+local function GetScootsVendorFrames()
+    local master = _G["ScootsVendor-Master"] or _G.ScootsVendorMaster or _G.ScootsVendor
+    local closeButton = _G["ScootsVendor-CloseButton"] or _G.ScootsVendorCloseButton
+
+    if not closeButton and master and master.GetName then
+        local masterName = master:GetName()
+        if masterName then
+            closeButton = _G[masterName .. "-CloseButton"] or _G[masterName .. "CloseButton"]
+        end
+    end
+
+    return master, closeButton
+end
+
+function AH.EnsureScootsVendorHooks()
+    if AH.scootsVendorHooksInstalled then
+        return true
+    end
+
+    local master = GetScootsVendorFrames()
+    if not master then
+        return false
+    end
+
+    master:HookScript("OnShow", function()
+        if AH.RefreshVendorCompatButtons then
+            AH.Wait(0.05, AH.RefreshVendorCompatButtons)
+        end
+    end)
+    master:HookScript("OnHide", function()
+        if _G.AttuneHelperScootsVendorButton then
+            _G.AttuneHelperScootsVendorButton:Hide()
+        end
+        if _G.AttuneHelperScootsAddToVendorButton then
+            _G.AttuneHelperScootsAddToVendorButton:Hide()
+        end
+        if _G.AttuneHelperScootsTodaysAttunesText then
+            _G.AttuneHelperScootsTodaysAttunesText:Hide()
+        end
+    end)
+
+    AH.scootsVendorHooksInstalled = true
+    return true
+end
+
+function AH.RefreshVendorCompatButtons()
+    local merchantFrame = _G.MerchantFrame
+    local repairButton = _G.MerchantRepairAllButton
+    local merchantButton = _G.AttuneHelperMerchantVendorButton
+    local addToVendorButton = _G.AttuneHelperMerchantAddToVendorButton
+
+    if merchantFrame and repairButton then
+        merchantButton = CreateOrReuseCompatButton("AttuneHelperMerchantVendorButton", merchantFrame, "ANCHOR_RIGHT", "Interface\\AddOns\\AttuneHelper\\assets\\icon_vendor-attuned.blp", AH.ApplyVendorButtonBehavior)
+        addToVendorButton = CreateOrReuseCompatButton("AttuneHelperMerchantAddToVendorButton", merchantFrame, "ANCHOR_RIGHT", "Interface\\AddOns\\AttuneHelper\\assets\\addToVendor.blp", AH.ApplyAddToVendorButtonBehavior)
+        if _G.MerchantRepairText then
+            _G.MerchantRepairText:SetText((AH.GetTodaysAttunesMerchantLabel and AH.GetTodaysAttunesMerchantLabel()) or AH.t("Vendor Attuned"))
+            _G.MerchantRepairText:ClearAllPoints()
+            _G.MerchantRepairText:SetPoint("CENTER", repairButton, "CENTER", -95, 0)
+            if AH.AttachTodaysAttunesTooltip then
+                AH.AttachTodaysAttunesTooltip(_G.MerchantRepairText, "ANCHOR_TOPRIGHT")
+            end
+        end
+        if merchantButton then
+            merchantButton:ClearAllPoints()
+            merchantButton:SetParent(repairButton:GetParent())
+            merchantButton:SetAllPoints(repairButton)
+            merchantButton:SetWidth(repairButton:GetWidth())
+            merchantButton:SetHeight(repairButton:GetHeight())
+            merchantButton:SetScale(repairButton:GetScale() or 1)
+            merchantButton:SetFrameLevel(repairButton:GetFrameLevel() + 5)
+            ApplyCompatMicroButtonStyle(merchantButton, "Interface\\AddOns\\AttuneHelper\\assets\\icon_vendor-attuned.blp")
+            merchantButton:Show()
+        end
+        if addToVendorButton and merchantButton then
+            addToVendorButton:ClearAllPoints()
+            addToVendorButton:SetParent(repairButton:GetParent())
+            addToVendorButton:SetWidth(repairButton:GetWidth())
+            addToVendorButton:SetHeight(repairButton:GetHeight())
+            addToVendorButton:SetScale(repairButton:GetScale() or 1)
+            addToVendorButton:SetFrameLevel(repairButton:GetFrameLevel() + 5)
+            addToVendorButton:SetPoint("RIGHT", merchantButton, "LEFT", -4, 0)
+            ApplyCompatMicroButtonStyle(addToVendorButton, "Interface\\AddOns\\AttuneHelper\\assets\\addToVendor.blp")
+            addToVendorButton:Show()
+        end
+    elseif merchantButton then
+        merchantButton:Hide()
+        if addToVendorButton then
+            addToVendorButton:Hide()
+        end
+    end
+
+    local scootsVendorMaster, scootsCloseButton = GetScootsVendorFrames()
+    local scootsButton = _G.AttuneHelperScootsVendorButton
+    local scootsAddToVendorButton = _G.AttuneHelperScootsAddToVendorButton
+    local scootsTodaysAttunesText = _G.AttuneHelperScootsTodaysAttunesText
+
+    if scootsVendorMaster and scootsCloseButton then
+        AH.EnsureScootsVendorHooks()
+        local scootsQuickBuyback = _G["ScootsVendor-QuickBuyback"]
+        if scootsQuickBuyback then
+            EnsureScootsQuickBuybackLabelHooks(scootsQuickBuyback)
+        end
+        scootsTodaysAttunesText = EnsureScootsTodaysAttunesLabel(scootsVendorMaster)
+        scootsButton = CreateOrReuseCompatButton("AttuneHelperScootsVendorButton", scootsCloseButton:GetParent() or scootsVendorMaster, "ANCHOR_LEFT", "Interface\\AddOns\\AttuneHelper\\assets\\icon_vendor-attuned.blp", AH.ApplyVendorButtonBehavior)
+        scootsAddToVendorButton = CreateOrReuseCompatButton("AttuneHelperScootsAddToVendorButton", scootsCloseButton:GetParent() or scootsVendorMaster, "ANCHOR_LEFT", "Interface\\AddOns\\AttuneHelper\\assets\\addToVendor.blp", AH.ApplyAddToVendorButtonBehavior)
+        if scootsButton then
+            scootsButton:ClearAllPoints()
+            scootsButton:SetParent(scootsCloseButton:GetParent() or scootsVendorMaster)
+            scootsButton.AHStyleVariant = "scoots"
+            scootsButton:SetWidth(scootsCloseButton:GetWidth())
+            scootsButton:SetHeight(scootsCloseButton:GetHeight())
+            scootsButton:SetScale(scootsCloseButton:GetScale() or 1)
+            scootsButton:SetFrameLevel(scootsCloseButton:GetFrameLevel() + 5)
+            scootsButton:SetPoint("TOP", scootsCloseButton, "BOTTOM", -4, 8)
+            ApplyCompatMicroButtonStyle(scootsButton, "Interface\\AddOns\\AttuneHelper\\assets\\icon_vendor-attuned.blp", "scoots")
+            scootsButton:Show()
+        end
+        if scootsAddToVendorButton and scootsButton then
+            scootsAddToVendorButton:ClearAllPoints()
+            scootsAddToVendorButton:SetParent(scootsCloseButton:GetParent() or scootsVendorMaster)
+            scootsAddToVendorButton.AHStyleVariant = "scoots"
+            scootsAddToVendorButton:SetWidth(scootsCloseButton:GetWidth())
+            scootsAddToVendorButton:SetHeight(scootsCloseButton:GetHeight())
+            scootsAddToVendorButton:SetScale(scootsCloseButton:GetScale() or 1)
+            scootsAddToVendorButton:SetFrameLevel(scootsCloseButton:GetFrameLevel() + 5)
+            scootsAddToVendorButton:SetPoint("RIGHT", scootsButton, "LEFT", -4, 0)
+            ApplyCompatMicroButtonStyle(scootsAddToVendorButton, "Interface\\AddOns\\AttuneHelper\\assets\\addToVendor.blp", "scoots")
+            scootsAddToVendorButton:Show()
+        end
+    elseif scootsButton then
+        scootsButton:Hide()
+        if scootsAddToVendorButton then
+            scootsAddToVendorButton:Hide()
+        end
+        if scootsTodaysAttunesText then
+            scootsTodaysAttunesText:Hide()
+        end
+    end
 end
 
 -- Export for legacy compatibility
@@ -847,11 +1353,11 @@ function AH.SetupMainButtonHandlers()
                 -- Check forge level
                 local forgeLevel = AH.GetForgeLevelFromLink and AH.GetForgeLevelFromLink(itemData.link) or 0
                 if forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.WARFORGED or 2) then
-                    table.insert(indicators, "|cffFFA680[WF]|r")
+                    table.insert(indicators, string.format("%s[WF]|r", GetForgeBadgeColorCode("WF")))
                 elseif forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.LIGHTFORGED or 3) then
-                    table.insert(indicators, "|cffFFFFA6[LF]|r")
+                    table.insert(indicators, string.format("%s[LF]|r", GetForgeBadgeColorCode("LF")))
                 elseif forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.TITANFORGED or 1) then
-                    table.insert(indicators, "|cff8080FF[TF]|r")
+                    table.insert(indicators, string.format("%s[TF]|r", GetForgeBadgeColorCode("TF")))
                 end
 
                 -- Combine name with indicators
@@ -893,64 +1399,7 @@ function AH.SetupMainButtonHandlers()
     end)
 
     -- ʕ •ᴥ•ʔ✿ Vendor button - sells attuned items ✿ ʕ •ᴥ•ʔ
-    AH.UI.buttons.vendor:SetScript("OnClick", function(self)
-        if CursorHasItem() and AH.AddCursorItemToIgnore and AH.AddCursorItemToIgnore() then
-            return
-        end
-        AH.VendorAttunedItems(self)
-    end)
-    AH.UI.buttons.vendor:SetScript("OnReceiveDrag", function(self)
-        if AH.AddCursorItemToIgnore then
-            AH.AddCursorItemToIgnore()
-        end
-    end)
-
-    -- Vendor Attuned Button tooltip
-    AH.UI.buttons.vendor:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(AH.t("Vendor Attuned Items"))
-        local itemsToVendor = AH.GetQualifyingVendorItems and AH.GetQualifyingVendorItems() or {}
-        local showAllItems = IsShiftKeyDown()
-        local previewLimit = 12
-        local itemsToShow = showAllItems and #itemsToVendor or math.min(#itemsToVendor, previewLimit)
-
-        if #itemsToVendor > 0 then
-            GameTooltip:AddLine(string.format(AH.t("Items to be sold (%d):"), #itemsToVendor), 1, 1, 0) -- Yellow
-            for i = 1, itemsToShow do
-                local itemData = itemsToVendor[i]
-                local _, _, itemQuality, _, _, _, _, _, _, itemTexture = GetItemInfo(itemData.link)
-                if (not itemTexture) and itemData.bag and itemData.slot then
-                    local _, _, _, _, _, _, _, _, _, containerTexture = GetContainerItemInfo(itemData.bag, itemData.slot)
-                    itemTexture = containerTexture
-                end
-                local iconText = ""
-                if itemTexture then
-                    iconText = string.format("|T%s:16:16:0:0:64:64:4:60:4:60|t ", itemTexture)
-                end
-                local qualityColor = ITEM_QUALITY_COLORS[itemQuality or 1]
-                local r, g, b = 0.8, 0.8, 0.8
-                if qualityColor then r, g, b = qualityColor.r, qualityColor.g, qualityColor.b end
-                GameTooltip:AddLine(iconText .. itemData.name, r, g, b, true)
-            end
-            if not showAllItems and #itemsToVendor > itemsToShow then
-                local remainingItems = #itemsToVendor - itemsToShow
-                GameTooltip:AddLine(string.format(AH.t("...and %d more items (hold Shift to show all)."), remainingItems), 0.75, 0.75, 0.75, true)
-            end
-        else
-            GameTooltip:AddLine(AH.t("No items will be sold based on current settings."), 0.8, 0.8, 0.8, true)
-        end
-
-        if not (AH.IsVendorWindowOpen and AH.IsVendorWindowOpen()) then
-            GameTooltip:AddLine(AH.t("Open merchant window to sell these items."), 1, 0.8, 0.2, true)
-        end
-        GameTooltip:AddLine(" ") -- Empty line for spacing
-        GameTooltip:AddLine(AH.t("Drag an item and left-click to add it to AHIgnore."), 0.6, 0.9, 1, true)
-        GameTooltip:AddLine(AH.t("Hold Shift for additional options"), 0.7, 0.9, 1, true)
-        GameTooltip:Show()
-    end)
-    AH.UI.buttons.vendor:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
+    AH.ApplyVendorButtonBehavior(AH.UI.buttons.vendor, "ANCHOR_RIGHT")
 
     -- SHIFT Buttons
     -- ʕ •ᴥ•ʔ✿ Toggle Auto-equip Button - toggles Auto-equip atunables setting ✿ ʕ •ᴥ•ʔ
@@ -1099,11 +1548,11 @@ function AH.SetupMiniButtonHandlers()
                         -- Check forge level
                         local forgeLevel = AH.GetForgeLevelFromLink and AH.GetForgeLevelFromLink(itemData.link) or 0
                         if forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.WARFORGED or 2) then
-                            table.insert(indicators, "|cffFFA680[WF]|r")
+                            table.insert(indicators, string.format("%s[WF]|r", GetForgeBadgeColorCode("WF")))
                         elseif forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.LIGHTFORGED or 3) then
-                            table.insert(indicators, "|cffFFFFA6[LF]|r")
+                            table.insert(indicators, string.format("%s[LF]|r", GetForgeBadgeColorCode("LF")))
                         elseif forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.TITANFORGED or 1) then
-                            table.insert(indicators, "|cff8080FF[TF]|r")
+                            table.insert(indicators, string.format("%s[TF]|r", GetForgeBadgeColorCode("TF")))
                         end
 
                         -- Combine name with indicators
@@ -1166,23 +1615,7 @@ function AH.SetupMiniButtonHandlers()
                 GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
                 GameTooltip:SetText(AH.t("Vendor Attuned Items"))
                 local itemsToVendor = AH.GetQualifyingVendorItems and AH.GetQualifyingVendorItems() or {}
-
-                if #itemsToVendor > 0 then
-                    GameTooltip:AddLine(string.format(AH.t("Items to be sold (%d):"), #itemsToVendor), 1, 1, 0) -- Yellow
-                    for _, itemData in ipairs(itemsToVendor) do
-                        local _, _, itemQuality, _, _, _, _, _, _, itemTexture = GetItemInfo(itemData.link)
-                        local iconText = ""
-                        if itemTexture then
-                            iconText = string.format("|T%s:16:16:0:0:64:64:4:60:4:60|t ", itemTexture)
-                        end
-                        local qualityColor = ITEM_QUALITY_COLORS[itemQuality or 1]
-                        local r, g, b = 0.8, 0.8, 0.8
-                        if qualityColor then r, g, b = qualityColor.r, qualityColor.g, qualityColor.b end
-                        GameTooltip:AddLine(iconText .. itemData.name, r, g, b, true)
-                    end
-                else
-                    GameTooltip:AddLine(AH.t("No items will be sold based on current settings."), 0.8, 0.8, 0.8, true)
-                end
+                AddVendorPreviewLines(GameTooltip, itemsToVendor)
 
                 if not (AH.IsVendorWindowOpen and AH.IsVendorWindowOpen()) then
                     GameTooltip:AddLine(AH.t("Open merchant window to sell these items."), 1, 0.8, 0.2, true)
