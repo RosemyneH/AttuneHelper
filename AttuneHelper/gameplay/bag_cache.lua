@@ -4,6 +4,10 @@ local AH = _G.AttuneHelper
 AH.bagSlotCache   = AH.bagSlotCache   or {}
 AH.equipSlotCache = AH.equipSlotCache or {}
 AH.bagCacheGeneration = AH.bagCacheGeneration or 0
+-- ʕ •ᴥ•ʔ✿ Track when each bag was last rebuilt so callers can skip redundant
+-- full refreshes when the cache is already hot. ✿ ʕ •ᴥ•ʔ
+AH.lastBagRefreshTime = AH.lastBagRefreshTime or {}
+AH.lastFullBagRefreshTime = AH.lastFullBagRefreshTime or 0
 
 -- ʕ •ᴥ•ʔ✿ Enhanced GetItemInfo cache with TTL and size limits ✿ ʕ •ᴥ•ʔ
 AH.itemInfoCache = AH.itemInfoCache or setmetatable({}, {__mode = "v"})
@@ -40,6 +44,15 @@ local function InsertRecordIntoEquipCache(rec)
         for _, k in ipairs(unified) do
             insertRec(k)
         end
+    end
+    if rec.equipSlot == "INVTYPE_2HWEAPON"
+        and rec.isTGCompat2H
+        and AH.PlayerHasTitansGrip
+        and AH.PlayerHasTitansGrip()
+        and AH.GetWeaponControlSetting
+        and AH.GetWeaponControlSetting("Allow OffHand 2H Weapons") == 1
+    then
+        insertRec("SecondaryHandSlot")
     end
 end
 
@@ -106,19 +119,49 @@ function AH.UpdateBagCache(bagID)
                         canPlayerAttune = (CanAttuneItemHelper(itemID) == 1)
                     end
 
-                    local identifier = AH.CreateItemIdentifier(link, name)
+                    -- ʕ •ᴥ•ʔ✿ Inline identifier build so we don't re-enter
+                    -- GetItemIDFromLink via CreateItemIdentifier on every slot. ✿ ʕ •ᴥ•ʔ
+                    local identifier = itemID and (name .. "|" .. tostring(itemID)) or name
                     local inSet = (AHSetList and (AHSetList[identifier] ~= nil or AHSetList[name] ~= nil))
 
                     if canPlayerAttune or inSet then
-                        -- ʕ •ᴥ•ʔ✿ Minimal record structure to save memory ✿ ʕ •ᴥ•ʔ
+                        -- ʕ •ᴥ•ʔ✿ Cache stable per-rec fields so hot loops don't
+                        -- re-resolve them thousands of times per spam click. ✿ ʕ •ᴥ•ʔ
+                        local forgeLevel = AH.GetForgeLevelFromLink and AH.GetForgeLevelFromLink(link) or 0
+                        local isTGCompat2H = false
+                        if equipLoc == "INVTYPE_2HWEAPON" and AH.IsTitansGripCompatibleTwoHandWeaponByLink then
+                            isTGCompat2H = AH.IsTitansGripCompatibleTwoHandWeaponByLink(link) == true
+                        end
+                        local isSoulbound = false
+                        if AH.IsSoulboundFromNativeBagSlot then
+                            isSoulbound = AH.IsSoulboundFromNativeBagSlot(bagID, slotID) == true
+                        end
+                        local isMythic = false
+                        if itemID and AH.IsMythic then
+                            isMythic = AH.IsMythic(itemID) == true
+                        end
+                        local bountyValue = 0
+                        if itemID and _G.GetCustomGameData and AH.synastriaDataReady then
+                            local ok, v = pcall(GetCustomGameData, 31, itemID)
+                            if ok and type(v) == "number" then
+                                bountyValue = v
+                            end
+                        end
                         local rec = {
-                            bag       = bagID,
-                            slot      = slotID,
-                            link      = link,
-                            name      = name,
-                            equipSlot = equipLoc,
-                            isAttunable = canPlayerAttune,
-                            inSet       = inSet,
+                            bag          = bagID,
+                            slot         = slotID,
+                            link         = link,
+                            name         = name,
+                            equipSlot    = equipLoc,
+                            isAttunable  = canPlayerAttune,
+                            inSet        = inSet,
+                            itemID       = itemID,
+                            identifier   = identifier,
+                            forgeLevel   = forgeLevel,
+                            isTGCompat2H = isTGCompat2H,
+                            isSoulbound  = isSoulbound,
+                            isMythic     = isMythic,
+                            bountyValue  = bountyValue,
                         }
                         bagSlotCache[bagID][slotID] = rec
                     end
@@ -129,6 +172,7 @@ function AH.UpdateBagCache(bagID)
 
     AH.equipSlotCacheDirty = true
     AH.bagCacheGeneration = (AH.bagCacheGeneration or 0) + 1
+    AH.lastBagRefreshTime[bagID] = GetTime()
 end
 _G.UpdateBagCache = AH.UpdateBagCache
 
@@ -173,14 +217,28 @@ _G.RefreshBagCacheForCombat = AH.RefreshBagCacheForCombat
 ------------------------------------------------------------------------
 function AH.RefreshAllBagCaches()
     if not ItemLocIsLoaded() then return end
-    --AH.print_debug_general("RefreshAllBagCaches: refreshing all (bags 0-4)")
     for b = 0, 4 do AH.UpdateBagCache(b) end
     if AH.RebuildEquipSlotCache then
         AH.RebuildEquipSlotCache()
     end
     if AH.UpdateItemCountText then AH.UpdateItemCountText() end
+    AH.lastFullBagRefreshTime = GetTime()
 end
 _G.RefreshAllBagCaches = AH.RefreshAllBagCaches
+
+-- ʕ •ᴥ•ʔ✿ Refresh all bags only if the cache is older than `maxAgeSeconds`.
+-- This is what callers on the equip hot path should use so they don't rescan
+-- 80+ bag slots immediately after BAG_UPDATE already did. ✿ ʕ •ᴥ•ʔ
+function AH.RefreshAllBagCachesIfStale(maxAgeSeconds)
+    if not ItemLocIsLoaded() then return end
+    local age = GetTime() - (AH.lastFullBagRefreshTime or 0)
+    if age < (maxAgeSeconds or 1.0) and next(bagSlotCache) ~= nil then
+        return false
+    end
+    AH.RefreshAllBagCaches()
+    return true
+end
+_G.RefreshAllBagCachesIfStale = AH.RefreshAllBagCachesIfStale
 
 ------------------------------------------------------------------------
 -- ʕ •ᴥ•ʔ✿ Optimized item count calculation with caching ✿ ʕ •ᴥ•ʔ
@@ -248,8 +306,7 @@ function AH.UpdateItemCountText()
             if bagTbl then
                 for _, rec in pairs(bagTbl) do
                     if rec and rec.isAttunable then
-                        local itemId = AH.GetItemIDFromLink(rec.link)
-                        if itemId and AH.ItemQualifiesForBagEquip(itemId, rec.link, strict) then
+                        if rec.itemID and AH.ItemQualifiesForBagEquipRec(rec, strict) then
                             count = count + 1
                         end
                     end

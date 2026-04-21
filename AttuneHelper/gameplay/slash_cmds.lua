@@ -87,13 +87,40 @@ end
 SLASH_AHSET1 = "/AHSet"
 SlashCmdList["AHSET"] = function(msg)
     local itemLinkPart = msg:match("^%s*(.-)%s*$")
+    local msgLower = itemLinkPart:lower()
     local onlyToken = itemLinkPart:match("^%s*(%S+)%s*$")
     if onlyToken and onlyToken:lower() == "all" then
         AH.SetAHSetToEquipped()
         return
     end
+
+    local sentKey = AH.AHSET_PRESET_KEY_1H2H_MULTICLASS or AH.AHSET_SENTINEL_1H_SPECIAL_2H or "1hspecial2h"
+    if msgLower == sentKey or msgLower == sentKey .. " " or msgLower:match("^" .. sentKey .. "%s*$") then
+        AH.EnsureAHSetListTable()
+        AHSetList[sentKey] = true
+        print("|cff00ff00[AttuneHelper]|r Preset flag '" .. sentKey .. "' enabled (optional force for warrior-style 1H/2H prep swap). Equip All already infers this from a 2H main-hand mapping plus a one-hander on Main Hand or 1H Weapon Swaps when an off-hand attune needs it.")
+        for i = 0, 4 do AH.UpdateBagCache(i) end
+        AH.UpdateItemCountText()
+        if AH.ForceSaveSettings then AH.ForceSaveSettings() end
+        if AH.RefreshListManagementPanel then AH.RefreshListManagementPanel() end
+        return
+    end
+    if msgLower == sentKey .. " remove" or msgLower:match("^" .. sentKey .. "%s+remove%s*$") then
+        AH.EnsureAHSetListTable()
+        if AHSetList[sentKey] then
+            AHSetList[sentKey] = nil
+            print("|cffffd200[AttuneHelper]|r Preset flag '" .. sentKey .. "' removed (1H/2H multiclass swap disabled for this preset).")
+        else
+            print("|cffffd200[AttuneHelper]|r Preset flag '" .. sentKey .. "' was not set on this preset.")
+        end
+        for i = 0, 4 do AH.UpdateBagCache(i) end
+        AH.UpdateItemCountText()
+        if AH.ForceSaveSettings then AH.ForceSaveSettings() end
+        if AH.RefreshListManagementPanel then AH.RefreshListManagementPanel() end
+        return
+    end
+
     local slotArg = ""
-    local msgLower = itemLinkPart:lower()
 
     -- Build keyword list
     local knownKeywords = {"remove"}
@@ -103,12 +130,14 @@ SlashCmdList["AHSET"] = function(msg)
         hands="HandsSlot", waist="WaistSlot", legs="LegsSlot", pants="LegsSlot", feet="FeetSlot",
         finger1="Finger0Slot", finger2="Finger1Slot", ring1="Finger0Slot", ring2="Finger1Slot",
         trinket1="Trinket0Slot", trinket2="Trinket1Slot", mh="MainHandSlot", mainhand="MainHandSlot",
-        ranged="RangedSlot"
+        ranged="RangedSlot",
+        prepmh = "PrepMainHandSlot", prepoh = "PrepOffHandSlot"
     }
     local allInventorySlots = {
         "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot",
         "WristSlot", "HandsSlot", "WaistSlot", "LegsSlot", "FeetSlot", "Finger0Slot", "Finger1Slot",
-        "Trinket0Slot", "Trinket1Slot", "MainHandSlot", "SecondaryHandSlot", "RangedSlot"
+        "Trinket0Slot", "Trinket1Slot", "MainHandSlot", "SecondaryHandSlot", "RangedSlot",
+        "PrepMainHandSlot", "PrepOffHandSlot"
     }
 
     if slotAliases then
@@ -133,7 +162,7 @@ SlashCmdList["AHSET"] = function(msg)
     end
 
     if not itemLinkPart or itemLinkPart == "" then
-        print("|cffff0000[AttuneHelper]|r Usage: /ahset <itemlink> [mh|oh|SlotName|remove]")
+        print("|cffff0000[AttuneHelper]|r Usage: /ahset <itemlink> [mh|oh|SlotName|remove]  |  /ahset 1hspecial2h [remove] (warrior MC 1H/2H preset flag)")
         return
     end
 
@@ -147,14 +176,26 @@ SlashCmdList["AHSET"] = function(msg)
     local processedSlotArg = slotArg:lower()
 
     if processedSlotArg == "remove" then
+        if AH.EnsureAHSetListTable then
+            AH.EnsureAHSetListTable()
+        end
         if AHSetList[identifier] or AHSetList[itemName] then
             AHSetList[identifier] = nil
             AHSetList[itemName] = nil -- Legacy key cleanup
             print("|cffffd200[AttuneHelper]|r '" .. itemName .. "' removed from AHSet.")
-            for i=0,4 do AH.UpdateBagCache(i) end
+            for i = 0, 4 do
+                AH.UpdateBagCache(i)
+            end
+            if AH.RebuildEquipSlotCache then
+                AH.RebuildEquipSlotCache()
+            end
             AH.UpdateItemCountText()
-            if AH.ForceSaveSettings then AH.ForceSaveSettings() end
-            if AH.RefreshListManagementPanel then AH.RefreshListManagementPanel() end
+            if AH.ForceSaveSettings then
+                AH.ForceSaveSettings()
+            end
+            if AH.RefreshListManagementPanel then
+                AH.RefreshListManagementPanel()
+            end
         else
             print("|cffffd200[AttuneHelper]|r '" .. itemName .. "' was not in AHSet.")
         end
@@ -206,20 +247,54 @@ SlashCmdList["AHSET"] = function(msg)
         end
     end
 
+    if AH.EnsureAHSetListTable then
+        AH.EnsureAHSetListTable()
+    end
+
     if AHSetList[identifier] == targetSlotName or AHSetList[itemName] == targetSlotName then
         AHSetList[identifier] = nil
         AHSetList[itemName] = nil -- Legacy key cleanup
         print("|cffffd200[AttuneHelper]|r '" .. itemName .. "' removed from AHSet for slot " .. targetSlotName .. ".")
+        for i = 0, 4 do
+            AH.UpdateBagCache(i)
+        end
+        if AH.RebuildEquipSlotCache then
+            AH.RebuildEquipSlotCache()
+        end
+        AH.UpdateItemCountText()
+        if AH.ForceSaveSettings then
+            AH.ForceSaveSettings()
+        end
+        if AH.RefreshListManagementPanel then
+            AH.RefreshListManagementPanel()
+        end
+    elseif AH.AssignItemToAHSetSlot then
+        AH.AssignItemToAHSetSlot(identifier, itemName, targetSlotName)
     else
+        AHSetList[identifier] = nil
+        AHSetList[itemName] = nil
+        for setKey, assignedSlot in pairs(AHSetList) do
+            if assignedSlot == targetSlotName then
+                AHSetList[setKey] = nil
+            end
+        end
         AHSetList[identifier] = targetSlotName
-        AHSetList[itemName] = nil -- Prefer identifier keys to avoid name collisions
+        AHSetList[itemName] = nil
         print("|cffffd200[AttuneHelper]|r '" .. itemName .. "' added to AHSet, designated for slot " .. targetSlotName .. ".")
+        for i = 0, 4 do
+            AH.UpdateBagCache(i)
+        end
+        if AH.RebuildEquipSlotCache then
+            AH.RebuildEquipSlotCache()
+        end
+        AH.UpdateItemCountText()
+        if AH.ForceSaveSettings then
+            AH.ForceSaveSettings()
+        end
+        if AH.RefreshListManagementPanel then
+            AH.RefreshListManagementPanel()
+        end
     end
-
-    for i=0,4 do AH.UpdateBagCache(i) end
-    AH.UpdateItemCountText()
-    if AH.ForceSaveSettings then AH.ForceSaveSettings() end
-    if AH.RefreshListManagementPanel then AH.RefreshListManagementPanel() end
 end
 
 ------------------------------------------------------------------------
@@ -312,43 +387,6 @@ SLASH_AHTOGGLERECYCLE1 = "/ahtogglerecycle"
 SlashCmdList["AHTOGGLERECYCLE"] = function()
     AttuneHelperDB["Do Not Sell Grey And White Items"] = 1 - (AttuneHelperDB["Do Not Sell Grey And White Items"] or 0)
     print("|cffffd200[AH]|r Do Not Sell Grey And White Items: " .. (AttuneHelperDB["Do Not Sell Grey And White Items"] == 1 and "|cff00ff00Enabled|r." or "|cffff0000Disabled|r."))
-end
-
--- ʕ •ᴥ•ʔ✿ Performance monitoring commands ✿ ʕ •ᴥ•ʔ
-SLASH_AHPERF1 = "/ahperf"
-SlashCmdList["AHPERF"] = function()
-    if AH.GetCacheStats then
-        print("|cffffd200[AH]|r " .. AH.GetCacheStats())
-    end
-    if AH.GetMemoryUsage then
-        print("|cffffd200[AH]|r Memory Usage: " .. AH.GetMemoryUsage())
-    end
-    if AH.EnhancedCleanupCaches then
-        print("|cffffd200[AH]|r Enhanced cleanup available")
-    end
-end
-
-SLASH_AHCLEANUP1 = "/ahcleanup"
-SlashCmdList["AHCLEANUP"] = function()
-    if AH.EnhancedCleanupCaches then
-        print("|cffffd200[AH]|r Running enhanced cleanup...")
-        AH.EnhancedCleanupCaches()
-    elseif AH.CleanupCaches then
-        print("|cffffd200[AH]|r Running standard cleanup...")
-        AH.CleanupCaches()
-    else
-        print("|cffffd200[AH]|r No cleanup function available")
-    end
-end
-
-SLASH_AHCACHE1 = "/ahcache"
-SlashCmdList["AHCACHE"] = function()
-    if AH.EnhancedBagCacheCleanup then
-        print("|cffffd200[AH]|r Running bag cache cleanup...")
-        AH.EnhancedBagCacheCleanup()
-    else
-        print("|cffffd200[AH]|r No bag cache cleanup available")
-    end
 end
 
 function AH.SlashCommand(msg)

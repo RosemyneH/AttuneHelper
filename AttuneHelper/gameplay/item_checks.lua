@@ -35,51 +35,105 @@ _G.ItemIsActivelyLeveling = AH.ItemIsActivelyLeveling
 ------------------------------------------------------------------------
 -- Should we equip a bag item?
 ------------------------------------------------------------------------
+-- ʕ •ᴥ•ʔ✿ Per-generation memoization so spam clicks don't re-run API calls
+-- across the same bag cache contents. ✿ ʕ •ᴥ•ʔ
+local qualifyCache = {}
+local qualifyCacheGeneration = -1
+local qualifyCacheStamp = 0
+local QUALIFY_CACHE_TTL = 0.5
+
+function AH.InvalidateItemQualifiesCache()
+    qualifyCache = {}
+    qualifyCacheGeneration = -1
+    qualifyCacheStamp = 0
+end
+
 function AH.ItemQualifiesForBagEquip(itemId, itemLink, isEquipNewAffixesOnlyEnabled)
     if not itemLink then return false end
     if not itemId then itemId = AH.GetItemIDFromLink(itemLink) end
     if not itemId then return false end
 
-    if not _G.CanAttuneItemHelper or CanAttuneItemHelper(itemId) ~= 1 then return false end
+    local generation = AH.bagCacheGeneration or 0
+    local now = GetTime()
+    if generation ~= qualifyCacheGeneration or (now - qualifyCacheStamp) > QUALIFY_CACHE_TTL then
+        qualifyCache = {}
+        qualifyCacheGeneration = generation
+        qualifyCacheStamp = now
+    end
+    local cacheKey = itemLink .. (isEquipNewAffixesOnlyEnabled and "|1" or "|0")
+    local cached = qualifyCache[cacheKey]
+    if cached ~= nil then
+        return cached
+    end
+
+    if not _G.CanAttuneItemHelper or CanAttuneItemHelper(itemId) ~= 1 then
+        qualifyCache[cacheKey] = false
+        return false
+    end
 
     local progress = 100
     if _G.GetItemLinkAttuneProgress then
         local p = GetItemLinkAttuneProgress(itemLink)
         if type(p) == "number" then progress = p end
     end
-    if progress >= 100 then return false end -- already done
+    if progress >= 100 then
+        qualifyCache[cacheKey] = false
+        return false
+    end
 
     local currentForgeLevel = AH.GetForgeLevelFromLink(itemLink)
 
+    local result
     if isEquipNewAffixesOnlyEnabled then
         local minForge = AttuneHelperDB["AffixOnlyMinForgeLevel"] or AH.FORGE_LEVEL_MAP.WARFORGED
 
-        -- If minForge is set, lower forge tiers are lenient.
         if minForge >= 0 and currentForgeLevel < minForge then
-            return true
+            result = true
+        else
+            local hasAttunedThresholdVariant = false
+            local hasAttunedAnyVariantEx = _G.HasAttunedAnyVariantEx
+            if hasAttunedAnyVariantEx then
+                local r = hasAttunedAnyVariantEx(itemId, minForge)
+                hasAttunedThresholdVariant = (r == true or r == 1)
+            elseif _G.HasAttunedAnyVariantOfItem then
+                hasAttunedThresholdVariant = HasAttunedAnyVariantOfItem(itemId) and true or false
+            end
+            if not hasAttunedThresholdVariant then
+                result = true
+            else
+                local strictBoundary = (minForge >= 0) and minForge or AH.FORGE_LEVEL_MAP.BASE
+                result = (currentForgeLevel > strictBoundary)
+            end
         end
-
-        local hasAttunedThresholdVariant = false
-        local hasAttunedAnyVariantEx = _G.HasAttunedAnyVariantEx
-        if hasAttunedAnyVariantEx then
-            local result = hasAttunedAnyVariantEx(itemId, minForge)
-            hasAttunedThresholdVariant = (result == true or result == 1)
-        elseif _G.HasAttunedAnyVariantOfItem then
-            -- ʕ •ᴥ•ʔ✿ Fallback when Ex API is unavailable ✿ ʕ •ᴥ•ʔ
-            hasAttunedThresholdVariant = HasAttunedAnyVariantOfItem(itemId) and true or false
-        end
-        if not hasAttunedThresholdVariant then
-            return true
-        end -- threshold tier not attuned yet
-
-        -- Once a variant exists, only higher forge tiers can override strict mode.
-        local strictBoundary = (minForge >= 0) and minForge or AH.FORGE_LEVEL_MAP.BASE
-        return currentForgeLevel > strictBoundary
+    else
+        result = true
     end
 
-    return true -- lenient mode
+    qualifyCache[cacheKey] = result
+    return result
 end
 _G.ItemQualifiesForBagEquip = AH.ItemQualifiesForBagEquip
+
+-- ʕ •ᴥ•ʔ✿ Rec-scoped wrapper: memoizes the answer on the rec itself so hot
+-- loops stop making calls once a rec has been evaluated this cycle. ✿ ʕ •ᴥ•ʔ
+function AH.ItemQualifiesForBagEquipRec(rec, isEquipNewAffixesOnlyEnabled)
+    if not rec or not rec.link then return false end
+    local gen = AH.bagCacheGeneration or 0
+    local now = GetTime()
+    if rec.qualifyGen == gen
+        and rec.qualifyStrict == isEquipNewAffixesOnlyEnabled
+        and (now - (rec.qualifyStamp or 0)) < QUALIFY_CACHE_TTL
+    then
+        return rec.qualifyResult
+    end
+    local result = AH.ItemQualifiesForBagEquip(rec.itemID, rec.link, isEquipNewAffixesOnlyEnabled)
+    rec.qualifyGen = gen
+    rec.qualifyStrict = isEquipNewAffixesOnlyEnabled
+    rec.qualifyStamp = now
+    rec.qualifyResult = result
+    return result
+end
+_G.ItemQualifiesForBagEquipRec = AH.ItemQualifiesForBagEquipRec
 
 ------------------------------------------------------------------------
 -- Which item to prioritise?

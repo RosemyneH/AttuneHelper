@@ -37,6 +37,17 @@ AH.slotNumberMapping = {
     MainHandSlot=16, SecondaryHandSlot=17
 }
 
+-- Preset marker for warrior-style multiclass: allow AHSet 1H swap when 2H main blocks OH attune (stored key; /ahset 1hspecial2h)
+AH.AHSET_PRESET_KEY_1H2H_MULTICLASS = "1hspecial2h"
+AH.AHSET_SENTINEL_1H_SPECIAL_2H = AH.AHSET_PRESET_KEY_1H2H_MULTICLASS
+-- Off-hand swap trigger: 1 = AHSet/designated OH only for ambiguous 1H; 2 = any attunable that can fill off-hand
+AH.AHSET_OH_TRIGGER_STRICT = 1
+AH.AHSET_OH_TRIGGER_LOOSE = 2
+
+-- AHSet-only logical slots (not Blizzard inventory indices): warrior MC prep kit in List Management paperdoll
+AH.AHSET_PREP_MAINHAND_SLOT = "PrepMainHandSlot"
+AH.AHSET_PREP_OFFHAND_SLOT = "PrepOffHandSlot"
+
 -- All inventory slots list
 AH.allInventorySlots = {
     "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot",
@@ -51,7 +62,8 @@ AH.slotAliases = {
     hands="HandsSlot", waist="WaistSlot", legs="LegsSlot", pants="LegsSlot", feet="FeetSlot", 
     finger1="Finger0Slot", finger2="Finger1Slot", ring1="Finger0Slot", ring2="Finger1Slot", 
     trinket1="Trinket0Slot", trinket2="Trinket1Slot", mh="MainHandSlot", mainhand="MainHandSlot", 
-    ranged="RangedSlot"
+    ranged="RangedSlot",
+    prepmh = "PrepMainHandSlot", prepoh = "PrepOffHandSlot"
 }
 
 -- ʕ •ᴥ•ʔ✿ Slot name to slot mapping for /ah blacklist command ✿ ʕ •ᴥ•ʔ
