@@ -685,7 +685,8 @@ AH.button_layout_button_choices = {
     { key = "toggleAutoEquip", label = "Toggle Auto-Equip" },
     { key = "AHSetUpdate",    label = "Update AHSet" },
     { key = "sort",           label = "Prepare Disenchant" },
-    { key = "equipAHSet",     label = "Equip AHSet" }
+    { key = "equipAHSet",     label = "Equip AHSet" },
+    { key = "nextAHPreset",   label = "Next AHSet Preset" }
 }
 
 -- Export for legacy compatibility
@@ -2190,7 +2191,8 @@ function AH.CreateButtonLayoutOptionsPanel(mainPanel)
         toggleAutoEquip = "Interface\\Addons\\AttuneHelper\\assets\\icon_auto_equip_off.blp",
         AHSetUpdate = "Interface\\Addons\\AttuneHelper\\assets\\icon_ahsetall.blp",
         sort = "Interface\\Addons\\AttuneHelper\\assets\\icon_prepare_disenchant.blp",
-        equipAHSet = "Interface\\Addons\\AttuneHelper\\assets\\icon_equip_ahset.blp"
+        equipAHSet = "Interface\\Addons\\AttuneHelper\\assets\\icon_equip_ahset.blp",
+        nextAHPreset = "Interface\\Addons\\AttuneHelper\\assets\\icon_ahsetall.blp"
     }
 
     local function GetChoiceMeta(choiceKey)
