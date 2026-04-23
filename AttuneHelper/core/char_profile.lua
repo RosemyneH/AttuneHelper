@@ -197,6 +197,37 @@ function AH.SwitchAHPreset(presetName)
     return true
 end
 
+function AH.SwitchToNextAHPreset()
+    local order = AH.GetAHPresetOrder and AH.GetAHPresetOrder() or {}
+    if #order == 0 then
+        return false
+    end
+
+    local active = AH.GetActiveAHPresetName and AH.GetActiveAHPresetName() or nil
+    local currentIndex = 1
+    for i = 1, #order do
+        if order[i] == active then
+            currentIndex = i
+            break
+        end
+    end
+
+    local nextIndex = currentIndex + 1
+    if nextIndex > #order then
+        nextIndex = 1
+    end
+
+    local nextPreset = order[nextIndex]
+    if not nextPreset then
+        return false
+    end
+
+    if AH.SwitchAHPreset and AH.SwitchAHPreset(nextPreset) then
+        return true, nextPreset
+    end
+    return false
+end
+
 function AH.CreateAHPreset(rawName)
     local name = normalizePresetName(rawName)
     if not name then

@@ -2,7 +2,7 @@
 local AH = _G.AttuneHelper
 local todaysAttunesTooltipOverlays = setmetatable({}, { __mode = "k" })
 --ʕ •ᴥ•ʔ✿ Button layouts ✿ ʕ •ᴥ•ʔ
-local allButtons = { "equipAll", "openSettings", "vendor", "toggleAutoEquip", "AHSetUpdate", "sort", "equipAHSet" }
+local allButtons = { "equipAll", "openSettings", "vendor", "toggleAutoEquip", "AHSetUpdate", "sort", "equipAHSet", "nextAHPreset" }
 local FORGE_BADGE_COLORS = {
     TF = "|cff8080FF",
     WF = "|cffFFA680",
@@ -135,6 +135,10 @@ local function GetCustomLayoutTrio(stateKey, showEquipAHSet)
     return topKey, centerKey, bottomKey
 end
 
+-- ʕ •ᴥ•ʔ Standard (non-Custom) layout: Shift row = the trio
+-- toggleAutoEquip, AHSetUpdate, sort, plus equipAHSet only if that control is layout-enabled.
+-- nextAHPreset is not in this row; show it by assigning it in Custom layout, and keep it hidden
+-- in UpdateButtonGroupVisibility. hideOnShift = the Normal row (equipAll, openSettings, vendor).
 local function BuildShiftVisibilityLists()
     local showOnShift = { "toggleAutoEquip", "AHSetUpdate", "sort" }
     if IsEquipAHSetButtonEnabled() then
@@ -178,6 +182,14 @@ local function ApplyMainDefaultLayout(buttons)
         buttons.equipAHSet:ClearAllPoints()
         buttons.equipAHSet:SetPoint("BOTTOM", buttons.sort, "BOTTOM", 0, -27)
     end
+    if buttons.nextAHPreset then
+        buttons.nextAHPreset:ClearAllPoints()
+        if buttons.equipAHSet then
+            buttons.nextAHPreset:SetPoint("BOTTOM", buttons.equipAHSet, "BOTTOM", 0, -27)
+        elseif buttons.sort then
+            buttons.nextAHPreset:SetPoint("BOTTOM", buttons.sort, "BOTTOM", 0, -27)
+        end
+    end
 end
 
 local function ApplyMiniDefaultLayout(buttons)
@@ -217,6 +229,14 @@ local function ApplyMiniDefaultLayout(buttons)
     if buttons.equipAHSet and buttons.sort then
         buttons.equipAHSet:ClearAllPoints()
         buttons.equipAHSet:SetPoint("LEFT", buttons.sort, "RIGHT", spacing, 0)
+    end
+    if buttons.nextAHPreset then
+        buttons.nextAHPreset:ClearAllPoints()
+        if buttons.equipAHSet then
+            buttons.nextAHPreset:SetPoint("LEFT", buttons.equipAHSet, "RIGHT", spacing, 0)
+        elseif buttons.sort then
+            buttons.nextAHPreset:SetPoint("LEFT", buttons.sort, "RIGHT", spacing, 0)
+        end
     end
 end
 
@@ -339,7 +359,15 @@ local function UpdateButtonGroupVisibility(buttons, isMini)
     local useCustomTwoButtonLayout = (useCustomLayout and hideCenterEnabled)
 
     if isMini then
-        SetMiniFrameButtonCapacity(buttons, 3)
+        local miniCapacity = 3
+        if useCustomLayout then
+            miniCapacity = useCustomTwoButtonLayout and 2 or 3
+        elseif hideCenterInNormalMode then
+            miniCapacity = 2
+        elseif shiftDown then
+            miniCapacity = showEquipAHSet and 4 or 3
+        end
+        SetMiniFrameButtonCapacity(buttons, miniCapacity)
     end
 
     if isMini then
@@ -433,6 +461,10 @@ local function UpdateButtonGroupVisibility(buttons, isMini)
         if btn then
             if not shiftDown then btn:Show() else btn:Hide() end
         end
+    end
+
+    if buttons.nextAHPreset then
+        buttons.nextAHPreset:Hide()
     end
 
     if buttons.equipAHSet and not showEquipAHSet then
@@ -1149,6 +1181,16 @@ function AH.CreateMainButtons()
         nil, nil, nil, 1.3
     )
 
+    local nextAHPresetButton = AH.CreateButton(
+        "AttuneHelperNextAHPresetButton",
+        mainFrame,
+        "Next AHSet Preset",
+        equipAHSetButton,
+        "BOTTOM",
+        0, -27,
+        nil, nil, nil, 1.3
+    )
+
     -- Store references
     AH.UI.buttons = AH.UI.buttons or {}
     AH.UI.buttons.equipAll = equipButton
@@ -1158,6 +1200,7 @@ function AH.CreateMainButtons()
     AH.UI.buttons.openSettings = openSettingsButton
     AH.UI.buttons.sort = sortButton
     AH.UI.buttons.equipAHSet = equipAHSetButton
+    AH.UI.buttons.nextAHPreset = nextAHPresetButton
 
     -- Export for legacy compatibility
     _G.EquipAllButton = equipButton
@@ -1167,6 +1210,7 @@ function AH.CreateMainButtons()
     _G.SettingsButton = openSettingsButton
     _G.SortInventoryButton = sortButton
     _G.EquipAHSetButton = equipAHSetButton
+    _G.NextAHPresetButton = nextAHPresetButton
 
     -- Set up button click handlers
     AH.SetupMainButtonHandlers()
@@ -1260,6 +1304,15 @@ function AH.CreateMiniButtons()
     )
     equipAHSetButton:SetPoint("LEFT", sortButton, "RIGHT", mS, 0)
 
+    local nextAHPresetButton = AH.CreateMiniIconButton(
+        "AttuneHelperMiniNextAHPresetButton",
+        frame,
+        "Interface\\Addons\\AttuneHelper\\assets\\icon_ahsetall.blp",
+        mBS,
+        "Next AHSet Preset"
+    )
+    nextAHPresetButton:SetPoint("LEFT", equipAHSetButton, "RIGHT", mS, 0)
+
     -- Store references
     AH.UI.miniButtons = AH.UI.miniButtons or {}
     AH.UI.miniButtons.equipAll = equipButton
@@ -1269,6 +1322,7 @@ function AH.CreateMiniButtons()
     AH.UI.miniButtons.openSettings = openSettingsButton
     AH.UI.miniButtons.sort = sortButton
     AH.UI.miniButtons.equipAHSet = equipAHSetButton
+    AH.UI.miniButtons.nextAHPreset = nextAHPresetButton
 
     -- Export for legacy compatibility
     _G.AttuneHelperMiniEquipButton = equipButton
@@ -1278,6 +1332,7 @@ function AH.CreateMiniButtons()
     _G.AttuneHelperMiniOpenSettingsButton = openSettingsButton
     _G.AttuneHelperMiniSortButton = sortButton
     _G.AttuneHelperMiniEquipAHSetButton = equipAHSetButton
+    _G.AttuneHelperMiniNextAHPresetButton = nextAHPresetButton
 
     -- Immediately update visibility after button creation
     if AH.UpdateModifierButtonVisibility then
@@ -1473,6 +1528,22 @@ function AH.SetupMainButtonHandlers()
         GameTooltip:Show()
     end)
     AH.UI.buttons.equipAHSet:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+
+    AH.UI.buttons.nextAHPreset:SetScript("OnClick", function()
+        local ok, newPreset = AH.SwitchToNextAHPreset and AH.SwitchToNextAHPreset()
+        if ok and newPreset then
+            print(string.format("|cff00ff00[AttuneHelper]|r Active AHSet preset: %s", tostring(newPreset)))
+        end
+    end)
+    AH.UI.buttons.nextAHPreset:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(AH.t("Next AHSet Preset"))
+        GameTooltip:AddLine(AH.t("Switches to the next AHSet preset in order."), 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    AH.UI.buttons.nextAHPreset:SetScript("OnLeave", function()
         GameTooltip:Hide()
     end)
 
@@ -1710,6 +1781,21 @@ function AH.SetupMiniButtonHandlers()
                 GameTooltip:Show()
             end)
             AH.UI.miniButtons.equipAHSet:SetScript("OnLeave", GameTooltip_Hide)
+        end
+
+        if AH.UI.miniButtons and AH.UI.miniButtons.nextAHPreset and _G.NextAHPresetButton then
+            AH.UI.miniButtons.nextAHPreset:SetScript("OnClick", function()
+                if _G.NextAHPresetButton:GetScript("OnClick") then
+                    _G.NextAHPresetButton:GetScript("OnClick")()
+                end
+            end)
+            AH.UI.miniButtons.nextAHPreset:SetScript("OnEnter", function(s)
+                GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+                GameTooltip:SetText(AH.t("Next AHSet Preset"))
+                GameTooltip:AddLine(AH.t("Switches to the next AHSet preset in order."), 1, 1, 1, true)
+                GameTooltip:Show()
+            end)
+            AH.UI.miniButtons.nextAHPreset:SetScript("OnLeave", GameTooltip_Hide)
         end
     end)
 end

@@ -122,6 +122,449 @@ function AH.IsWeaponTypeForOffHandCheck(equipLoc)
 end
 _G.IsWeaponTypeForOffHandCheck = AH.IsWeaponTypeForOffHandCheck
 
+-- ʕ •ᴥ•ʔ✿ Warrior on Chromie mask (bit layout matches CustomGetClassMask / cDF stance.lua) ✿ ʕ •ᴥ•ʔ
+function AH.PlayerMaskIncludesWarrior()
+    local maskFn = _G.CustomGetClassMask
+    if type(maskFn) == "function" and bit and bit.band and bit.lshift then
+        local ok, mask = pcall(maskFn)
+        if ok and type(mask) == "number" and mask > 0 then
+            return bit.band(mask, bit.lshift(1, 0)) > 0
+        end
+    end
+    local _, class = UnitClass("player")
+    return class == "WARRIOR"
+end
+
+local titansGripCache = { expire = 0, value = false }
+
+function AH.InvalidateTitansGripCache()
+    titansGripCache.expire = 0
+end
+
+local TITANS_GRIP_SPELL_ID = 46917
+
+local function PlayerHasTitansGripSpellBookScan()
+    local book = _G.BOOKTYPE_SPELL or "spell"
+    local i = 1
+    while i <= 500 do
+        local t1, t2 = GetSpellBookItemInfo(i, book)
+        if not t1 then
+            break
+        end
+        local sid = t2
+        if type(sid) ~= "number" then
+            sid = tonumber(sid)
+        end
+        if sid == TITANS_GRIP_SPELL_ID then
+            return true
+        end
+        i = i + 1
+    end
+    return false
+end
+
+local function CountClassMaskBits(mask)
+    if type(mask) ~= "number" or mask <= 0 then
+        return 0
+    end
+    local c, n = 0, mask
+    while n > 0 do
+        if n % 2 == 1 then
+            c = c + 1
+        end
+        n = math.floor(n / 2)
+    end
+    return c
+end
+
+local function IsMultiClassByMask()
+    local maskFn = _G.CustomGetClassMask
+    if type(maskFn) ~= "function" then
+        return false
+    end
+    local ok, mask = pcall(maskFn)
+    if not ok or type(mask) ~= "number" then
+        return false
+    end
+    return CountClassMaskBits(mask) > 1
+end
+
+local function TalentRowIsTitansGrip(tab, index, rank, name)
+    if not rank or rank < 1 then
+        return false
+    end
+    if not name or name == "" then
+        name = select(1, GetTalentInfo(tab, index))
+    end
+    if not name or name == "" then
+        return false
+    end
+    local spellName = select(1, GetSpellInfo(TITANS_GRIP_SPELL_ID))
+    if spellName and name == spellName then
+        return true
+    end
+    if name == "Titan's Grip" or name == "Titans Grip" then
+        return true
+    end
+    if GetTalentLink then
+        local ok, link = pcall(GetTalentLink, tab, index)
+        if ok and type(link) == "string" and string.find(link, tostring(TITANS_GRIP_SPELL_ID), 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+local function SafeGetNumTalentTabs(classIndex)
+    if type(GetNumTalentTabs) ~= "function" then
+        return nil
+    end
+    if type(classIndex) == "number" then
+        local okClass, numTabsClass = pcall(GetNumTalentTabs, classIndex)
+        if okClass and type(numTabsClass) == "number" and numTabsClass > 0 then
+            return numTabsClass
+        end
+    end
+    local ok, numTabs = pcall(GetNumTalentTabs)
+    if ok and type(numTabs) == "number" and numTabs > 0 then
+        return numTabs
+    end
+    return nil
+end
+
+local function SafeGetNumTalents(tab, classIndex)
+    if type(GetNumTalents) ~= "function" then
+        return nil
+    end
+    if type(classIndex) == "number" then
+        local okClass, nTalClass = pcall(GetNumTalents, tab, classIndex)
+        if okClass and type(nTalClass) == "number" then
+            return nTalClass
+        end
+    end
+    local ok, nTal = pcall(GetNumTalents, tab)
+    if ok and type(nTal) == "number" then
+        return nTal
+    end
+    return nil
+end
+
+local function SafeGetTalentInfo(tab, index, classIndex)
+    if type(GetTalentInfo) ~= "function" then
+        return false, nil, nil, nil, nil, nil
+    end
+    if type(classIndex) == "number" then
+        local okClass, nameClass, texClass, tierClass, columnClass, rankClass = pcall(GetTalentInfo, tab, index, classIndex)
+        if okClass then
+            return true, nameClass, texClass, tierClass, columnClass, rankClass
+        end
+    end
+    local ok, name, tex, tier, column, rank = pcall(GetTalentInfo, tab, index)
+    return ok, name, tex, tier, column, rank
+end
+
+local function HasTitansGripInCurrentTalentPanel(classIndex)
+    if type(GetNumTalentTabs) ~= "function" or type(GetNumTalents) ~= "function" or type(GetTalentInfo) ~= "function" then
+        return false
+    end
+    local numTabs = SafeGetNumTalentTabs(classIndex)
+    if type(numTabs) ~= "number" or numTabs < 1 then
+        return false
+    end
+    for tab = 1, numTabs do
+        local nTal = SafeGetNumTalents(tab, classIndex)
+        if type(nTal) == "number" then
+            for i = 1, nTal do
+                local okT, name, _, _, _, rank = SafeGetTalentInfo(tab, i, classIndex)
+                if okT and TalentRowIsTitansGrip(tab, i, rank, name) then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function PlayerHasTitansGripTalentFrameScan()
+    if type(TalentFrame_LoadUI) == "function" then
+        pcall(TalentFrame_LoadUI)
+    end
+    if IsMultiClassByMask() then
+        for classIndex = 1, 2 do
+            if HasTitansGripInCurrentTalentPanel(classIndex) then
+                return true
+            end
+        end
+    end
+    if InCombatLockdown() then
+        return HasTitansGripInCurrentTalentPanel()
+    end
+    if not IsMultiClassByMask() then
+        return HasTitansGripInCurrentTalentPanel()
+    end
+    local b1, b2 = _G.PlayerClassTalentBtn1, _G.PlayerClassTalentBtn2
+    if not (b1 and b2 and b1.Click and b2.Click) then
+        return HasTitansGripInCurrentTalentPanel()
+    end
+    local orig = 1
+    if type(GetSelectedTalentClassIndex) == "function" then
+        local ok, v = pcall(GetSelectedTalentClassIndex)
+        if ok and type(v) == "number" and v >= 1 and v <= 2 then
+            orig = v
+        end
+    end
+    for classIndex = 1, 2 do
+        local btn = _G["PlayerClassTalentBtn" .. classIndex]
+        if btn and btn.Click then
+            pcall(function()
+                btn:Click()
+            end)
+        end
+        if HasTitansGripInCurrentTalentPanel() then
+            local restore = _G["PlayerClassTalentBtn" .. orig]
+            if restore and restore.Click then
+                pcall(function()
+                    restore:Click()
+                end)
+            end
+            return true
+        end
+    end
+    local restore = _G["PlayerClassTalentBtn" .. orig]
+    if restore and restore.Click then
+        pcall(function()
+            restore:Click()
+        end)
+    end
+    return false
+end
+
+-- ʕ •ᴥ•ʔ✿ Titan's Grip: dual 2H; multiclass must not rely on UnitClass alone ✿ ʕ •ᴥ•ʔ
+function AH.PlayerHasTitansGrip()
+    local now = GetTime()
+    if titansGripCache.expire > now then
+        return titansGripCache.value
+    end
+    titansGripCache.expire = now + 1.5
+    titansGripCache.value = false
+    if not AH.PlayerMaskIncludesWarrior() then
+        return false
+    end
+    if _G.IsSpellKnown then
+        local ok, known = pcall(IsSpellKnown, TITANS_GRIP_SPELL_ID)
+        if ok and known then
+            titansGripCache.value = true
+            return true
+        end
+    end
+    if _G.IsPlayerSpell then
+        local ok, known = pcall(IsPlayerSpell, TITANS_GRIP_SPELL_ID)
+        if ok and known then
+            titansGripCache.value = true
+            return true
+        end
+    end
+    if GetSpellBookItemInfo then
+        local ok, has = pcall(PlayerHasTitansGripSpellBookScan)
+        if ok and has then
+            titansGripCache.value = true
+            return true
+        end
+    end
+    local okTal, hasTal = pcall(PlayerHasTitansGripTalentFrameScan)
+    if okTal and hasTal then
+        titansGripCache.value = true
+        return true
+    end
+    return false
+end
+
+-- ʕ •ᴥ•ʔ✿ TG-compatible 2H cache (stable per link) ✿ ʕ •ᴥ•ʔ
+local tgCompatCache = setmetatable({}, { __mode = "k" })
+
+function AH.IsTitansGripCompatibleTwoHandWeaponByLink(link)
+    if not link then
+        return false
+    end
+    local cached = tgCompatCache[link]
+    if cached ~= nil then
+        return cached
+    end
+    local _, _, _, _, _, _, subType, _, equipLoc = GetItemInfo(link)
+    if not equipLoc or equipLoc == "" then
+        -- ʕ •ᴥ•ʔ✿ Item info not yet loaded; don't cache the empty result ✿ ʕ •ᴥ•ʔ
+        return false
+    end
+    if equipLoc ~= "INVTYPE_2HWEAPON" or not subType or subType == "" then
+        tgCompatCache[link] = false
+        return false
+    end
+    local s = string.lower(subType)
+    if string.find(s, "staff") or s == "staves" then
+        return false
+    end
+    if string.find(s, "polearm") or string.find(s, "pole arm") then
+        return false
+    end
+    if string.find(s, "fishing") then
+        return false
+    end
+    local result = false
+    if string.find(s, "two%-handed") or string.find(s, "two handed") then
+        if string.find(s, "axe") or string.find(s, "mace") or string.find(s, "sword") then
+            result = true
+        end
+    end
+    if not result and string.find(s, "zweihand") then
+        if string.find(s, "axt") or string.find(s, "streitkolben") or string.find(s, "kolben") or string.find(s, "schwert") then
+            result = true
+        end
+    end
+    tgCompatCache[link] = result
+    return result
+end
+
+function AH.MhLinkAllowsTitansGripStyleOffhandPairing(mhLink)
+    if not mhLink then
+        return true
+    end
+    -- ʕ •ᴥ•ʔ✿ GetItemInfo equipLoc is the 9th return, previous code captured the link by mistake ✿ ʕ •ᴥ•ʔ
+    local _, _, _, _, _, _, _, _, el = GetItemInfo(mhLink)
+    if el ~= "INVTYPE_2HWEAPON" then
+        return true
+    end
+    return AH.PlayerHasTitansGrip() and AH.IsTitansGripCompatibleTwoHandWeaponByLink(mhLink)
+end
+
+function AH.GetAHSetMainHandItemLink()
+    if AH.EnsureAHSetListTable then
+        AH.EnsureAHSetListTable()
+    end
+    if type(AHSetList) ~= "table" then
+        return nil
+    end
+    local chosen, fallback
+    for k, v in pairs(AHSetList) do
+        if v == "MainHandSlot" then
+            if type(k) == "string" and string.match(k, "|%d+$") then
+                chosen = k
+                break
+            end
+            if not fallback then
+                fallback = k
+            end
+        end
+    end
+    local key = chosen or fallback
+    if not key then
+        return nil
+    end
+    local id = AH.GetItemIDFromIdentifier and AH.GetItemIDFromIdentifier(key)
+    if id then
+        local lnk = select(2, GetItemInfo(id))
+        if lnk and lnk ~= "" then
+            return lnk
+        end
+        return "item:" .. tostring(id)
+    end
+    if type(key) == "string" and string.find(key, "item:") then
+        return key
+    end
+    return nil
+end
+
+function AH.AHSetMainHandIsAnyTwoHandWeapon()
+    local link = AH.GetAHSetMainHandItemLink()
+    if not link then
+        return false
+    end
+    local _, _, _, _, _, _, _, _, equipLoc = GetItemInfo(link)
+    return equipLoc == "INVTYPE_2HWEAPON"
+end
+
+function AH.ResolveAHSetListKeyToItemLink(key)
+    if type(key) ~= "string" then
+        return nil
+    end
+    local sent = AH.AHSET_PRESET_KEY_1H2H_MULTICLASS or AH.AHSET_SENTINEL_1H_SPECIAL_2H or "1hspecial2h"
+    if key == sent then
+        return nil
+    end
+    if string.find(key, "|Hitem") then
+        return key
+    end
+    if string.find(key, "^item:%d+") then
+        return key
+    end
+    local id = AH.GetItemIDFromIdentifier(key)
+    if id then
+        local lnk = select(2, GetItemInfo(id))
+        if lnk and lnk ~= "" then
+            return lnk
+        end
+        return "item:" .. tostring(id)
+    end
+    return nil
+end
+
+function AH.ItemLinkIsOneHandSwapForAHSet(link)
+    if not link then
+        return false
+    end
+    local _, _, _, _, _, _, _, _, equipLoc = GetItemInfo(link)
+    return equipLoc == "INVTYPE_WEAPON" or equipLoc == "INVTYPE_WEAPONMAINHAND"
+end
+
+function AH.AHSetHasOneHandSwapCandidateInMap()
+    if AH.EnsureAHSetListTable then
+        AH.EnsureAHSetListTable()
+    end
+    if type(AHSetList) ~= "table" then
+        return false
+    end
+    local prepMH = AH.AHSET_PREP_MAINHAND_SLOT or "PrepMainHandSlot"
+    local sent = AH.AHSET_PRESET_KEY_1H2H_MULTICLASS or AH.AHSET_SENTINEL_1H_SPECIAL_2H or "1hspecial2h"
+    for k, slot in pairs(AHSetList) do
+        if k ~= sent and type(slot) == "string" and (slot == "MainHandSlot" or slot == prepMH) then
+            local link = AH.ResolveAHSetListKeyToItemLink(k)
+            if link and AH.ItemLinkIsOneHandSwapForAHSet(link) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+function AH.AHSet1h2hMulticlassSwapPresetFlagActive()
+    if not AH.AHSetMainHandIsAnyTwoHandWeapon() then
+        return false
+    end
+    if AH.EnsureAHSetListTable then
+        AH.EnsureAHSetListTable()
+    end
+    local sent = AH.AHSET_PRESET_KEY_1H2H_MULTICLASS or AH.AHSET_SENTINEL_1H_SPECIAL_2H or "1hspecial2h"
+    if type(AHSetList) == "table" and AHSetList[sent] ~= nil then
+        return true
+    end
+    return AH.AHSetHasOneHandSwapCandidateInMap()
+end
+
+function AH.AHSetInferredOhAttuneTriggerMode()
+    if AH.EnsureAHSetListTable then
+        AH.EnsureAHSetListTable()
+    end
+    if type(AHSetList) ~= "table" then
+        return AH.AHSET_OH_TRIGGER_STRICT or 1
+    end
+    local prepOH = AH.AHSET_PREP_OFFHAND_SLOT or "PrepOffHandSlot"
+    for _, slot in pairs(AHSetList) do
+        if type(slot) == "string" and (slot == "SecondaryHandSlot" or slot == prepOH) then
+            return AH.AHSET_OH_TRIGGER_STRICT or 1
+        end
+    end
+    return AH.AHSET_OH_TRIGGER_LOOSE or 2
+end
+
 AH.UPDATE_MASK = AH.UPDATE_MASK or {
     FULL_LIST = 1,
     OBTAINED = 2,
@@ -304,13 +747,30 @@ _G.tContains = AH.tContains -- legacy
 ------------------------------------------------------------------------
 -- Item helpers
 ------------------------------------------------------------------------
+-- ʕ •ᴥ•ʔ✿ Per-link itemID cache. Lua interns item link strings so weak keys
+-- evict naturally when the link is no longer referenced anywhere. ✿ ʕ •ᴥ•ʔ
+local itemIDByLink = setmetatable({}, { __mode = "k" })
+
+function AH.InvalidateItemIDByLinkCache()
+    itemIDByLink = setmetatable({}, { __mode = "k" })
+end
+
 function AH.GetItemIDFromLink(itemLink)
     if not itemLink then return nil end
-    if not ItemLocIsLoaded() or not CustomExtractItemId then 
-        local itemIdStr = string.match(itemLink, "item:(%d+)")
-        return itemIdStr and tonumber(itemIdStr) or nil
+    local cached = itemIDByLink[itemLink]
+    if cached ~= nil then
+        if cached == false then return nil end
+        return cached
     end
-    return CustomExtractItemId(itemLink)
+    local result
+    if not ItemLocIsLoaded() or not CustomExtractItemId then
+        local itemIdStr = string.match(itemLink, "item:(%d+)")
+        result = itemIdStr and tonumber(itemIdStr) or nil
+    else
+        result = CustomExtractItemId(itemLink)
+    end
+    itemIDByLink[itemLink] = (result == nil) and false or result
+    return result
 end
 _G.GetItemIDFromLink = AH.GetItemIDFromLink
 
@@ -370,19 +830,31 @@ function AH.ConvertForgeMapToApiParam(forgeLevelMapValue)
 end
 _G.ConvertForgeMapToApiParam = AH.ConvertForgeMapToApiParam
 
+-- ʕ •ᴥ•ʔ✿ Forge level per-link cache (weak values auto-evict) ✿ ʕ •ᴥ•ʔ
+local forgeLevelCache = setmetatable({}, { __mode = "k" })
+
+function AH.InvalidateForgeLevelCache()
+    forgeLevelCache = setmetatable({}, { __mode = "k" })
+end
+
 function AH.GetForgeLevelFromLink(itemLink)
     if not itemLink then return AH.FORGE_LEVEL_MAP.BASE end
+    local cached = forgeLevelCache[itemLink]
+    if cached ~= nil then
+        return cached
+    end
+    local result = AH.FORGE_LEVEL_MAP.BASE
     if _G.GetItemLinkTitanforge then
         local forgeValue = GetItemLinkTitanforge(itemLink)
-        -- Validate against known values
         for _, v in pairs(AH.FORGE_LEVEL_MAP) do
-            if forgeValue == v then return forgeValue end
+            if forgeValue == v then
+                result = forgeValue
+                break
+            end
         end
-        --AH.print_debug_general("GetForgeLevelFromLink: unexpected value "..tostring(forgeValue))
-    else
-        --AH.print_debug_general("GetForgeLevelFromLink: API not available/disabled")
     end
-    return AH.FORGE_LEVEL_MAP.BASE
+    forgeLevelCache[itemLink] = result
+    return result
 end
 _G.GetForgeLevelFromLink = AH.GetForgeLevelFromLink
 
@@ -512,6 +984,8 @@ function AH.InitializeDefaultSettings()
     AttuneHelperDB["EquipUntouchedVariants"] = nil
 
     if AttuneHelperDB["EquipNewAffixesOnly"] == nil then AttuneHelperDB["EquipNewAffixesOnly"] = 0 end
+    if AttuneHelperDB["AHSet Enable 1H Swap for OH Attune"] == nil then AttuneHelperDB["AHSet Enable 1H Swap for OH Attune"] = 0 end
+    if AttuneHelperDB["AHSet OH Attune Trigger"] == nil then AttuneHelperDB["AHSet OH Attune Trigger"] = 1 end
 
     -- Migrate old boolean toggle to threshold dropdown model
     if AttuneHelperDB["AffixOnlyWarforgedAndAbove"] ~= nil and AttuneHelperDB["AffixOnlyMinForgeLevel"] == nil then

@@ -33,6 +33,8 @@ AH.AUTO_EQUIP_COOLDOWN = 2.0 -- ʕ •ᴥ•ʔ✿ Prevent spam equipping ✿ ʕ 
 AH.pendingAutoEquipRetry = false
 AH.lastUnitKillAccountRefreshTime = AH.lastUnitKillAccountRefreshTime or 0
 AH.UNIT_KILL_ACCOUNT_REFRESH_COOLDOWN = AH.UNIT_KILL_ACCOUNT_REFRESH_COOLDOWN or 0.75
+AH.lastAttuneChatSystemHandledAt = AH.lastAttuneChatSystemHandledAt or 0
+AH.ATTUNE_CHAT_SYSTEM_BURST_WINDOW = AH.ATTUNE_CHAT_SYSTEM_BURST_WINDOW or 0.8 -- ʕ •ᴥ•ʔ✿ De-dupe chat storms during batch attunes ✿ ʕ •ᴥ•ʔ
 
 -- Session state variables
 AH.isSCKLoaded = false
@@ -111,16 +113,9 @@ local function SchedulePostAttuneAutoEquipRefresh(attemptsLeft, delay)
         if AH.ClearRecentlyEquippedSlots then
             AH.ClearRecentlyEquippedSlots()
         end
-
-        if AH.GetCurrentAttuneCounts then
-            AH.GetCurrentAttuneCounts()
-        end
-
-        local updateMask = AH.UPDATE_MASK or { FULL_LIST = 1, OBTAINED = 2, ATTUNED_PERCENT = 4 }
-        if AH.RequestUpdateList then
-            AH.RequestUpdateList(bit.bor(updateMask.FULL_LIST, updateMask.ATTUNED_PERCENT))
-        elseif AH.RefreshAllBagCaches then
-            AH.RefreshAllBagCaches()
+        if AH.UpdateItemCountText then
+            -- ʕ •ᴥ•ʔ✿ Item count text is cached; avoid expensive full refreshes ✿ ʕ •ᴥ•ʔ
+            AH.UpdateItemCountText()
         end
 
         if AttuneHelperDB and AttuneHelperDB["Auto Equip Attunable After Combat"] == 1 and AH.TriggerThrottledAutoEquip then
@@ -535,6 +530,7 @@ function AH.RegisterEvents()
     AH.UI.mainFrame:RegisterEvent("MERCHANT_CLOSED")
     AH.UI.mainFrame:RegisterEvent("CHAT_MSG_SYSTEM")
     AH.UI.mainFrame:RegisterEvent("UNIT_KILL")
+    AH.UI.mainFrame:RegisterEvent("CHARACTER_POINTS_CHANGED")
 
     -- Set the event handler
     AH.UI.mainFrame:SetScript("OnEvent", AH.OnEvent)
@@ -664,19 +660,38 @@ function AH.OnEvent(self, event, arg1)
     elseif event == "CHAT_MSG_SYSTEM" then
         local message = arg1
         if message and string.find(message, "You have attuned with", 1, true) then
-            AH.Wait(0.25, function()
-                if AH.ClearRecentlyEquippedSlots then
-                    AH.ClearRecentlyEquippedSlots()
+            local now = GetTime()
+            local burstWindow = math.max(AH.CHAT_MSG_SYSTEM_THROTTLE or 0.2, AH.ATTUNE_CHAT_SYSTEM_BURST_WINDOW or 0.8)
+
+            -- If we get multiple attune-complete messages in a tight burst, only do the heavy refresh once.
+            if AH.lastAttuneChatSystemHandledAt and (now - AH.lastAttuneChatSystemHandledAt) < burstWindow then
+                if AH.UpdateItemCountText then
+                    AH.UpdateItemCountText()
                 end
-                AH.GetCurrentAttuneCounts()
-                AH.EnsureDailyAttuneSnapshotCurrent()
-                if AH.RequestUpdateList then
-                    local updateMask = AH.UPDATE_MASK or { FULL_LIST = 1, OBTAINED = 2, ATTUNED_PERCENT = 4 }
-                    AH.RequestUpdateList(bit.bor(updateMask.OBTAINED, updateMask.ATTUNED_PERCENT))
+                RefreshMerchantAttuneSummary()
+                return
+            end
+
+            AH.lastAttuneChatSystemHandledAt = now
+
+            AH.Wait(0.25, function()
+                if AH.GetCurrentAttuneCounts then
+                    AH.GetCurrentAttuneCounts()
+                end
+                if AH.EnsureDailyAttuneSnapshotCurrent then
+                    AH.EnsureDailyAttuneSnapshotCurrent()
                 end
                 RefreshMerchantAttuneSummary()
             end)
+
             SchedulePostAttuneAutoEquipRefresh(4, 0.75)
+        end
+    elseif event == "CHARACTER_POINTS_CHANGED" then
+        if AH.InvalidateTitansGripCache then
+            AH.InvalidateTitansGripCache()
+        end
+        if AH.RebuildEquipSlotCache then
+            AH.RebuildEquipSlotCache()
         end
     elseif event == "UNIT_KILL" then
         if not IsPrestigedCharacter() then

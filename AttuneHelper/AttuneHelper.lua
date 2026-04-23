@@ -95,6 +95,7 @@ if AH then
 				_G.SettingsButton = AH.UI.buttons.openSettings
 				_G.SortInventoryButton = AH.UI.buttons.sort
 				_G.EquipAHSetButton = AH.UI.buttons.equipAHSet
+				_G.NextAHPresetButton = AH.UI.buttons.nextAHPreset
 				_G.AttuneHelperEquipAllButton =  AH.UI.buttons.equipAll
 				_G.AttuneHelperAHSetUpdateButton = AH.UI.buttons.AHSetUpdate
 				_G.AttuneHelperVendorAttunedButton = AH.UI.buttons.vendor
@@ -102,6 +103,7 @@ if AH then
 				_G.AttuneHelperSettingsButton = AH.UI.buttons.openSettings
 				_G.AttuneHelperSortInventoryButton = AH.UI.buttons.sort
 				_G.AttuneHelperEquipAHSetButton = AH.UI.buttons.equipAHSet
+				_G.AttuneHelperNextAHPresetButton = AH.UI.buttons.nextAHPreset
             end
             
             if AH.UI.miniButtons then
@@ -113,6 +115,7 @@ if AH then
 				_G.AttuneHelperMiniSettingsButton = AH.UI.miniButtons.openSettings
                 _G.AttuneHelperMiniSortButton = AH.UI.miniButtons.sort
                 _G.AttuneHelperMiniEquipAHSetButton = AH.UI.miniButtons.equipAHSet
+                _G.AttuneHelperMiniNextAHPresetButton = AH.UI.miniButtons.nextAHPreset
             end
             
             if AH.UI.itemCountText then

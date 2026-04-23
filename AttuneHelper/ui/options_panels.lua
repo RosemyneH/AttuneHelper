@@ -128,6 +128,8 @@ local AHSET_SLOT_LABELS = {
     MainHandSlot = "Main Hand",
     SecondaryHandSlot = "Off Hand",
     RangedSlot = "Ranged",
+    PrepMainHandSlot = "1H · main-hand row",
+    PrepOffHandSlot = "Off-hand row",
 }
 
 local AHSET_PAPER_LEFT = {
@@ -258,8 +260,17 @@ local function CreateAHSetPaperdollSlot(parent, slotName, x, y, slotSize)
     btn.slotName = slotName
     btn:EnableMouse(true)
 
-    local _, emptyTex = GetInventorySlotInfo(slotName)
-    btn.emptyTexture = emptyTex
+    local _, emptyTex
+    local prepMH = AH.AHSET_PREP_MAINHAND_SLOT or "PrepMainHandSlot"
+    local prepOH = AH.AHSET_PREP_OFFHAND_SLOT or "PrepOffHandSlot"
+    if slotName == prepMH then
+        _, emptyTex = GetInventorySlotInfo("MainHandSlot")
+    elseif slotName == prepOH then
+        _, emptyTex = GetInventorySlotInfo("SecondaryHandSlot")
+    else
+        _, emptyTex = GetInventorySlotInfo(slotName)
+    end
+    btn.emptyTexture = emptyTex or "Interface\\Icons\\INV_Misc_QuestionMark"
 
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetPoint("TOPLEFT", btn, "TOPLEFT", 1, -1)
@@ -309,6 +320,13 @@ local function CreateAHSetPaperdollSlot(parent, slotName, x, y, slotSize)
             GameTooltip:ClearLines()
         end
         local slotLabel = AHSET_SLOT_LABELS[self.slotName] or self.slotName
+        local prepMHS = AH.AHSET_PREP_MAINHAND_SLOT or "PrepMainHandSlot"
+        local prepOHS = AH.AHSET_PREP_OFFHAND_SLOT or "PrepOffHandSlot"
+        if self.slotName == prepMHS then
+            slotLabel = AH.t("AHSet prep MH slot label")
+        elseif self.slotName == prepOHS then
+            slotLabel = AH.t("AHSet prep OH slot label")
+        end
         if self.setKey then
             local itemId = AH.GetItemIDFromIdentifier(self.setKey)
             local fromBlizz = itemId and select(1, GetItemInfo(itemId))
@@ -337,11 +355,31 @@ local function CreateAHSetPaperdollSlot(parent, slotName, x, y, slotSize)
             GameTooltip:AddLine("Right-click to remove from this preset.", 0.55, 0.85, 1, true)
         else
             GameTooltip:SetText(slotLabel, 1, 1, 1)
-            GameTooltip:AddLine("Empty slot — use Set AHSet or /ahset.", 0.65, 0.65, 0.7, true)
+            if self.slotName == prepMHS or self.slotName == prepOHS then
+                GameTooltip:AddLine(AH.t("AHSet prep paper strip drag hint"), 1, 0.82, 0.18, true)
+                GameTooltip:AddLine(AH.t("AHSet prep slot empty slash hint"), 0.55, 0.55, 0.6, true)
+            else
+                GameTooltip:AddLine("Empty slot — drag an item here, Set AHSet, or /ahset.", 0.65, 0.65, 0.7, true)
+            end
         end
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", GameTooltip_Hide)
+
+    btn:SetScript("OnReceiveDrag", function(self)
+        if not AH.AssignItemToAHSetPaperdollSlot then
+            return
+        end
+        local ct, id, link = GetCursorInfo()
+        if ct ~= "item" then
+            return
+        end
+        local itemLink = link or (id and ("item:" .. tostring(id))) or nil
+        if not itemLink then
+            return
+        end
+        AH.AssignItemToAHSetPaperdollSlot(self.slotName, itemLink)
+    end)
 
     return btn
 end
@@ -408,9 +446,9 @@ local function RemoveListEntry(listType, entry)
     end
 end
 
-local function CreateManagedListSection(parent, titleText, topAnchor, listType, entryProvider)
+local function CreateManagedListSection(parent, titleText, topAnchor, listType, entryProvider, heightOverride)
     local section = CreateFrame("Frame", nil, parent)
-    section:SetHeight(MANAGED_LIST_SECTION_SCROLL_HEIGHT)
+    section:SetHeight(heightOverride or MANAGED_LIST_SECTION_SCROLL_HEIGHT)
     section:SetPoint("TOP", topAnchor, "BOTTOM", 0, -14)
     section:SetPoint("LEFT", parent, "LEFT", 4, 0)
     section:SetPoint("RIGHT", parent, "RIGHT", -10, 0)
@@ -647,7 +685,8 @@ AH.button_layout_button_choices = {
     { key = "toggleAutoEquip", label = "Toggle Auto-Equip" },
     { key = "AHSetUpdate",    label = "Update AHSet" },
     { key = "sort",           label = "Prepare Disenchant" },
-    { key = "equipAHSet",     label = "Equip AHSet" }
+    { key = "equipAHSet",     label = "Equip AHSet" },
+    { key = "nextAHPreset",   label = "Next AHSet Preset" }
 }
 
 -- Export for legacy compatibility
@@ -948,6 +987,10 @@ function AH.LoadAllSettings()
         }
         UIDropDownMenu_SetSelectedValue(AH.language_option_controls.dropdown, sel)
         UIDropDownMenu_SetText(AH.language_option_controls.dropdown, textMap[sel] or sel)
+    end
+
+    if AH.RefreshWeaponControlsPanel then
+        AH.RefreshWeaponControlsPanel()
     end
 
     if AH.UpdateDisplayMode then
@@ -1757,7 +1800,7 @@ function AH.CreateListManagementPanel(mainPanel)
     local presetHead = CreateFrame("Frame", nil, content)
     presetHead:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
     presetHead:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, 0)
-    presetHead:SetHeight(78)
+    presetHead:SetHeight(74)
 
     local presetRowLabel = presetHead:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     presetRowLabel:SetPoint("TOP", presetHead, "TOP", 0, -6)
@@ -1830,9 +1873,9 @@ function AH.CreateListManagementPanel(mainPanel)
     listsTop:SetPoint("TOPLEFT", listsColumn, "TOPLEFT", 8, -8)
     listsTop:SetPoint("TOPRIGHT", listsColumn, "TOPRIGHT", -8, -8)
 
-    local paperLeft = CreateFrame("Frame", nil, leftPaperCol)
-    paperLeft:SetPoint("TOPLEFT", leftPaperCol, "TOPLEFT", 2, -4)
-    paperLeft:SetSize(52, 252)
+    local paperArmor = CreateFrame("Frame", nil, leftPaperCol)
+    paperArmor:SetPoint("TOPLEFT", leftPaperCol, "TOPLEFT", 2, -4)
+    paperArmor:SetWidth(52)
 
     local paperRight = CreateFrame("Frame", nil, rightPaperCol)
     paperRight:SetPoint("TOPLEFT", rightPaperCol, "TOPLEFT", 2, -4)
@@ -1844,15 +1887,37 @@ function AH.CreateListManagementPanel(mainPanel)
     local ly = -4
     local colX = 6
     for i, slotName in ipairs(AHSET_PAPER_LEFT) do
-        slotButtons[slotName] = CreateAHSetPaperdollSlot(paperLeft, slotName, colX, ly - (i - 1) * step, slotSize)
+        slotButtons[slotName] = CreateAHSetPaperdollSlot(paperArmor, slotName, colX, ly - (i - 1) * step, slotSize)
     end
     for i, slotName in ipairs(AHSET_PAPER_RIGHT) do
         slotButtons[slotName] = CreateAHSetPaperdollSlot(paperRight, slotName, colX, ly - (i - 1) * step, slotSize)
     end
+    paperArmor:SetHeight(math.max(40, #AHSET_PAPER_LEFT * step + 6))
 
-    local mhY = ly - #AHSET_PAPER_LEFT * step - 8
-    slotButtons["MainHandSlot"] = CreateAHSetPaperdollSlot(paperLeft, "MainHandSlot", colX, mhY, slotSize)
-    slotButtons["SecondaryHandSlot"] = CreateAHSetPaperdollSlot(paperLeft, "SecondaryHandSlot", colX, mhY - step, slotSize)
+    local weaponCol = CreateFrame("Frame", nil, leftPaperCol)
+    weaponCol:SetWidth(54)
+    -- ʕ •ᴥ•ʔ✿ Keep weapons directly under bracers (WristSlot) in paperdoll layout ✿ ʕ •ᴥ•ʔ
+    weaponCol:SetPoint("TOPLEFT", paperArmor, "BOTTOMLEFT", 2, -6)
+    local wepTop = -4
+    slotButtons["MainHandSlot"] = CreateAHSetPaperdollSlot(weaponCol, "MainHandSlot", colX, wepTop, slotSize)
+    slotButtons["SecondaryHandSlot"] = CreateAHSetPaperdollSlot(weaponCol, "SecondaryHandSlot", colX, wepTop - step, slotSize)
+
+    local prepPaperRow = CreateFrame("Frame", nil, weaponCol)
+    prepPaperRow:SetPoint("TOPLEFT", weaponCol, "TOPLEFT", 0, wepTop - 2 * step - 6)
+    prepPaperRow:SetSize(weaponCol:GetWidth(), 74)
+
+    local prepDragHint = prepPaperRow:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    prepDragHint:SetPoint("TOP", prepPaperRow, "TOP", 0, -1)
+    prepDragHint:SetWidth(weaponCol:GetWidth() - 2)
+    prepDragHint:SetJustifyH("CENTER")
+    prepDragHint:SetWordWrap(true)
+    prepDragHint:SetTextColor(1, 0.82, 0.18)
+    prepDragHint:SetText(AH.t("AHSet prep paper strip drag hint"))
+
+    slotButtons["PrepMainHandSlot"] = CreateAHSetPaperdollSlot(prepPaperRow, "PrepMainHandSlot", colX, -24, slotSize)
+    slotButtons["PrepOffHandSlot"] = CreateAHSetPaperdollSlot(prepPaperRow, "PrepOffHandSlot", colX, -24 - step, slotSize)
+
+    weaponCol:SetHeight(154)
 
     local rngY = ly - #AHSET_PAPER_RIGHT * step - 8
     slotButtons["RangedSlot"] = CreateAHSetPaperdollSlot(paperRight, "RangedSlot", colX, rngY, slotSize)
@@ -1860,6 +1925,24 @@ function AH.CreateListManagementPanel(mainPanel)
     local paperBand = mainBand
 
     local ignoreSection, vendorSection
+
+    local function syncAhsetListMgmtSwapAll()
+        local showPrep = AH.AHSetMainHandIsAnyTwoHandWeapon and AH.AHSetMainHandIsAnyTwoHandWeapon()
+        if mainBand and presetHead and content then
+            mainBand:ClearAllPoints()
+            mainBand:SetHeight(752)
+            mainBand:SetPoint("TOP", presetHead, "BOTTOM", 0, -10)
+            mainBand:SetPoint("LEFT", content, "LEFT", 4, 0)
+            mainBand:SetPoint("RIGHT", content, "RIGHT", -4, 0)
+        end
+        if prepPaperRow then
+            if showPrep then
+                prepPaperRow:Show()
+            else
+                prepPaperRow:Hide()
+            end
+        end
+    end
 
     local function RelayoutListManagementLayout()
         if not scroll or not content then
@@ -1897,6 +1980,9 @@ function AH.CreateListManagementPanel(mainPanel)
         else
             delPresetBtn:Disable()
         end
+        if syncAhsetListMgmtSwapAll then
+            syncAhsetListMgmtSwapAll()
+        end
         RelayoutListManagementLayout()
     end
 
@@ -1926,7 +2012,7 @@ function AH.CreateListManagementPanel(mainPanel)
     listsColumn:SetFrameLevel(2)
     presetHead:SetFrameLevel(100)
 
-    content:SetHeight(900)
+    content:SetHeight(820)
 
     AH.list_management_controls = {
         panel = listPanel,
@@ -1934,13 +2020,14 @@ function AH.CreateListManagementPanel(mainPanel)
         scrollContent = content,
         presetHead = presetHead,
         paperBand = paperBand,
-        ahsetPaper = paperLeft,
+        ahsetPaper = paperArmor,
         ahsetPaperRight = paperRight,
         ahsetSlots = slotButtons,
         presetDropdown = presetDD,
         ignore = ignoreSection,
         vendor = vendorSection,
         Relayout = RelayoutListManagementLayout,
+        syncAhsetListMgmtSwapAll = syncAhsetListMgmtSwapAll,
     }
 
     AH.RefreshListManagementPanel = function()
@@ -1953,6 +2040,9 @@ function AH.CreateListManagementPanel(mainPanel)
         onAHSetDataChanged()
         RefreshManagedListSection(AH.list_management_controls.ignore)
         RefreshManagedListSection(AH.list_management_controls.vendor)
+        if AH.list_management_controls.syncAhsetListMgmtSwapAll then
+            AH.list_management_controls.syncAhsetListMgmtSwapAll()
+        end
     end
 
     local function OnListMgmtScrollSized()
@@ -1972,6 +2062,12 @@ function AH.CreateListManagementPanel(mainPanel)
             AH.RefreshListManagementPanel()
         end
     end)
+
+    function AH.RefreshWeaponControlsPanel()
+        if AH.list_management_controls and AH.list_management_controls.syncAhsetListMgmtSwapAll then
+            AH.list_management_controls.syncAhsetListMgmtSwapAll()
+        end
+    end
 
     return listPanel
 end
@@ -2095,7 +2191,8 @@ function AH.CreateButtonLayoutOptionsPanel(mainPanel)
         toggleAutoEquip = "Interface\\Addons\\AttuneHelper\\assets\\icon_auto_equip_off.blp",
         AHSetUpdate = "Interface\\Addons\\AttuneHelper\\assets\\icon_ahsetall.blp",
         sort = "Interface\\Addons\\AttuneHelper\\assets\\icon_prepare_disenchant.blp",
-        equipAHSet = "Interface\\Addons\\AttuneHelper\\assets\\icon_equip_ahset.blp"
+        equipAHSet = "Interface\\Addons\\AttuneHelper\\assets\\icon_equip_ahset.blp",
+        nextAHPreset = "Interface\\Addons\\AttuneHelper\\assets\\icon_ahsetall.blp"
     }
 
     local function GetChoiceMeta(choiceKey)
@@ -2391,45 +2488,60 @@ function AH.CreateWeaponControlsPanel(mainPanel)
     subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
     subtitle:SetText("Control which weapon types can be auto-equipped to MainHand and OffHand slots.")
 
-    -- MainHand Section
+    local tgDetectedLabel = weaponPanel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    tgDetectedLabel:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", 0, -10)
+    tgDetectedLabel:SetWidth(480)
+    tgDetectedLabel:SetJustifyH("LEFT")
+    tgDetectedLabel:SetText("Titan's Grip detected: -")
+
+    local function RefreshTitansGripDetectedLabel()
+        local hasTG = AH.PlayerHasTitansGrip and AH.PlayerHasTitansGrip()
+        local valueText = hasTG and AH.t("Yes") or AH.t("No")
+        local icon = hasTG and "|cff00ff00[OK]|r" or "|cffff4040[NO]|r"
+        local colorCode = hasTG and "|cff00ff00" or "|cffff4040"
+        tgDetectedLabel:SetText(icon .. " Titan's Grip detected: " .. colorCode .. valueText .. "|r")
+    end
+
     local mhHeader = weaponPanel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-    mhHeader:SetPoint("TOPLEFT", 16, -80)
+    mhHeader:SetPoint("TOPLEFT", tgDetectedLabel, "BOTTOMLEFT", 0, -14)
     mhHeader:SetText("MainHand Weapons")
     mhHeader:SetTextColor(0.8, 0.8, 1)
 
-    local mh1hCB = AH.CreateCheckbox("Allow MainHand 1H Weapons", weaponPanel, 16, -110, true, "Allow MainHand 1H Weapons")
-    local mh2hCB = AH.CreateCheckbox("Allow MainHand 2H Weapons", weaponPanel, 16, -135, true, "Allow MainHand 2H Weapons")
-    
-    -- Add MainHand checkboxes to the weapon control array
+    local mh1hCB = AH.CreateCheckbox("Allow MainHand 1H Weapons", weaponPanel, 16, -128, true, "Allow MainHand 1H Weapons")
+    local mh2hCB = AH.CreateCheckbox("Allow MainHand 2H Weapons", weaponPanel, 16, -153, true, "Allow MainHand 2H Weapons")
+
     table.insert(AH.weapon_control_checkboxes, mh1hCB)
     table.insert(AH.weapon_control_checkboxes, mh2hCB)
-    
-    -- Set click handlers for MainHand checkboxes
+
     mh1hCB:SetScript("OnClick", AH.SaveSettingsForced)
     mh2hCB:SetScript("OnClick", AH.SaveSettingsForced)
 
-    -- OffHand Section  
     local ohHeader = weaponPanel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-    ohHeader:SetPoint("TOPLEFT", 16, -170)
+    ohHeader:SetPoint("TOPLEFT", 16, -188)
     ohHeader:SetText("OffHand Items")
     ohHeader:SetTextColor(0.8, 0.8, 1)
 
-    local oh1hCB = AH.CreateCheckbox("Allow OffHand 1H Weapons", weaponPanel, 16, -200, true, "Allow OffHand 1H Weapons")
-    local oh2hCB = AH.CreateCheckbox("Allow OffHand 2H Weapons", weaponPanel, 16, -225, true, "Allow OffHand 2H Weapons")
-    local ohShieldCB = AH.CreateCheckbox("Allow OffHand Shields", weaponPanel, 16, -250, true, "Allow OffHand Shields")
-    local ohHoldCB = AH.CreateCheckbox("Allow OffHand Holdables", weaponPanel, 16, -275, true, "Allow OffHand Holdables")
-    
-    -- Add OffHand checkboxes to the weapon control array
+    local oh1hCB = AH.CreateCheckbox("Allow OffHand 1H Weapons", weaponPanel, 16, -218, true, "Allow OffHand 1H Weapons")
+    local oh2hCB = AH.CreateCheckbox("Allow OffHand 2H Weapons", weaponPanel, 16, -243, true, "Allow OffHand 2H Weapons")
+    local ohShieldCB = AH.CreateCheckbox("Allow OffHand Shields", weaponPanel, 16, -268, true, "Allow OffHand Shields")
+    local ohHoldCB = AH.CreateCheckbox("Allow OffHand Holdables", weaponPanel, 16, -293, true, "Allow OffHand Holdables")
+
     table.insert(AH.weapon_control_checkboxes, oh1hCB)
     table.insert(AH.weapon_control_checkboxes, oh2hCB)
     table.insert(AH.weapon_control_checkboxes, ohShieldCB)
     table.insert(AH.weapon_control_checkboxes, ohHoldCB)
-    
-    -- Set click handlers for OffHand checkboxes
+
     oh1hCB:SetScript("OnClick", AH.SaveSettingsForced)
     oh2hCB:SetScript("OnClick", AH.SaveSettingsForced)
     ohShieldCB:SetScript("OnClick", AH.SaveSettingsForced)
     ohHoldCB:SetScript("OnClick", AH.SaveSettingsForced)
+
+    weaponPanel:SetScript("OnShow", function()
+        RefreshTitansGripDetectedLabel()
+        if AH.RefreshWeaponControlsPanel then
+            AH.RefreshWeaponControlsPanel()
+        end
+    end)
 
     return weaponPanel
 end

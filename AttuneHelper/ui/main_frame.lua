@@ -239,7 +239,8 @@ function AH.ApplyButtonTheme(theme)
             _G.AttuneHelperToggleAutoEquipButton,
             _G.AttuneHelperAHSetUpdateButton,
             _G.AttuneHelperSortInventoryButton,
-            _G.AttuneHelperEquipAHSetButton
+            _G.AttuneHelperEquipAHSetButton,
+            _G.AttuneHelperNextAHPresetButton
         }
     end
 
