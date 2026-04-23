@@ -135,8 +135,12 @@ local function GetCustomLayoutTrio(stateKey, showEquipAHSet)
     return topKey, centerKey, bottomKey
 end
 
+-- ʕ •ᴥ•ʔ Standard (non-Custom) layout: Shift row = the trio
+-- toggleAutoEquip, AHSetUpdate, sort, plus equipAHSet only if that control is layout-enabled.
+-- nextAHPreset is not in this row; show it by assigning it in Custom layout, and keep it hidden
+-- in UpdateButtonGroupVisibility. hideOnShift = the Normal row (equipAll, openSettings, vendor).
 local function BuildShiftVisibilityLists()
-    local showOnShift = { "toggleAutoEquip", "AHSetUpdate", "sort", "nextAHPreset" }
+    local showOnShift = { "toggleAutoEquip", "AHSetUpdate", "sort" }
     if IsEquipAHSetButtonEnabled() then
         table.insert(showOnShift, "equipAHSet")
     end
@@ -361,7 +365,7 @@ local function UpdateButtonGroupVisibility(buttons, isMini)
         elseif hideCenterInNormalMode then
             miniCapacity = 2
         elseif shiftDown then
-            miniCapacity = showEquipAHSet and 5 or 4
+            miniCapacity = showEquipAHSet and 4 or 3
         end
         SetMiniFrameButtonCapacity(buttons, miniCapacity)
     end
@@ -457,6 +461,10 @@ local function UpdateButtonGroupVisibility(buttons, isMini)
         if btn then
             if not shiftDown then btn:Show() else btn:Hide() end
         end
+    end
+
+    if buttons.nextAHPreset then
+        buttons.nextAHPreset:Hide()
     end
 
     if buttons.equipAHSet and not showEquipAHSet then
