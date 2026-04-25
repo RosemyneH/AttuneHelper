@@ -18,6 +18,9 @@ local vendorListCache = {
     data = {}
 }
 local VENDOR_LIST_CACHE_TTL = 0.5
+local VENDOR_SELL_BATCH_SIZE = 4
+local VENDOR_SELL_BATCH_DELAY = 0.08
+AH.vendorSellInProgress = AH.vendorSellInProgress or false
 
 function AH.InvalidateVendorListCache()
     vendorListCache.generation = -1
@@ -413,6 +416,10 @@ function AH.SellQualifiedItemsFromDialog(itemsToSellFromDialog)
         --AH.print_debug_vendor_preview("SellQualifiedItemsFromDialog: Merchant frame not shown.")
         return
     end
+    if AH.vendorSellInProgress then
+        DEFAULT_CHAT_FRAME:AddMessage("|cffffd200[Attune Helper]|r Vendor sell already in progress.")
+        return
+    end
     if #itemsToSellFromDialog == 0 then
         --AH.print_debug_vendor_preview("SellQualifiedItemsFromDialog: No items to sell.")
         DEFAULT_CHAT_FRAME:AddMessage("|cffffd200[Attune Helper]|r No items to vendor based on current settings.")
@@ -425,49 +432,84 @@ function AH.SellQualifiedItemsFromDialog(itemsToSellFromDialog)
     local maxSellCount = math.min(configuredMaxSellCount, maxItemsPerVendorPass)
     local soldCount = 0
     local deletedCount = 0
+    local processedCount = 0
+    local itemsInPass = math.min(#itemsToSellFromDialog, maxSellCount)
 
     --AH.print_debug_vendor_preview("SellQualifiedItemsFromDialog: Attempting to sell up to " .. maxSellCount .. " items.")
 
-    for i = 1, math.min(#itemsToSellFromDialog, maxSellCount) do
-        local item = itemsToSellFromDialog[i]
-        if item and item.bag and item.slot then
-            local currentItemLinkInSlot = GetContainerItemLink(item.bag, item.slot)
-            if currentItemLinkInSlot and currentItemLinkInSlot == item.link then
-                local displayName = BuildVendorDisplayName(item)
-                if item.deleteInstead then
-                    PickupContainerItem(item.bag, item.slot)
-                    if CursorHasItem() then
-                        DeleteCursorItem()
-                        ClearCursor()
-                        deletedCount = deletedCount + 1
-                        print("|cffff6060[Attune Helper]|r Deleted: " .. displayName)
-                    else
-                        ClearCursor()
-                    end
-                else
-                    UseContainerItem(item.bag, item.slot)
-                    soldCount = soldCount + 1
-                    print("|cffffd200[Attune Helper]|r Sold: " .. displayName)
-                    --AH.print_debug_vendor_preview("SellQualifiedItemsFromDialog: Sold " .. displayName)
-                end
+    local function FinishVendorSell(stoppedEarly)
+        AH.vendorSellInProgress = false
+
+        if AH.InvalidateVendorListCache then
+            AH.InvalidateVendorListCache()
+        end
+
+        if stoppedEarly then
+            DEFAULT_CHAT_FRAME:AddMessage("|cffffd200[Attune Helper]|r Vendor sell stopped because the merchant window closed.")
+        end
+
+        if soldCount > 0 or deletedCount > 0 then
+            if soldCount > 0 then
+                DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffffd200[Attune Helper]|r Sold %d item(s).", soldCount))
             end
+            if deletedCount > 0 then
+                DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffff6060[Attune Helper]|r Deleted %d no-value always-vendor item(s).", deletedCount))
+            end
+            if not stoppedEarly and #itemsToSellFromDialog > maxSellCount then
+                local remainingCount = #itemsToSellFromDialog - maxSellCount
+                DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffffd200[Attune Helper]|r Vendor safeguard: stopped at %d items to prevent packet disconnects. %d item(s) remain; click again to continue.", maxSellCount, remainingCount))
+            end
+        elseif not stoppedEarly then
+            DEFAULT_CHAT_FRAME:AddMessage("|cffffd200[Attune Helper]|r No items were actually sold.")
         end
     end
 
-    if soldCount > 0 or deletedCount > 0 then
-        if soldCount > 0 then
-            DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffffd200[Attune Helper]|r Sold %d item(s).", soldCount))
+    local function ProcessVendorSellBatch()
+        if not (AH.IsVendorWindowOpen and AH.IsVendorWindowOpen()) then
+            FinishVendorSell(true)
+            return
         end
-        if deletedCount > 0 then
-            DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffff6060[Attune Helper]|r Deleted %d no-value always-vendor item(s).", deletedCount))
+
+        local processedThisBatch = 0
+        while processedCount < itemsInPass and processedThisBatch < VENDOR_SELL_BATCH_SIZE do
+            processedCount = processedCount + 1
+            processedThisBatch = processedThisBatch + 1
+
+            local item = itemsToSellFromDialog[processedCount]
+            if item and item.bag and item.slot then
+                local currentItemLinkInSlot = GetContainerItemLink(item.bag, item.slot)
+                if currentItemLinkInSlot and currentItemLinkInSlot == item.link then
+                    if item.deleteInstead then
+                        PickupContainerItem(item.bag, item.slot)
+                        if CursorHasItem() then
+                            DeleteCursorItem()
+                            ClearCursor()
+                            deletedCount = deletedCount + 1
+                        else
+                            ClearCursor()
+                        end
+                    else
+                        UseContainerItem(item.bag, item.slot)
+                        soldCount = soldCount + 1
+                    end
+                end
+            end
         end
-        if #itemsToSellFromDialog > maxSellCount then
-            local remainingCount = #itemsToSellFromDialog - maxSellCount
-            DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffffd200[Attune Helper]|r Vendor safeguard: stopped at %d items to prevent packet disconnects. %d item(s) remain; click again to continue.", maxSellCount, remainingCount))
+
+        if processedCount >= itemsInPass then
+            FinishVendorSell(false)
+            return
         end
-    else
-        DEFAULT_CHAT_FRAME:AddMessage("|cffffd200[Attune Helper]|r No items were actually sold.")
+
+        if AH.Wait then
+            AH.Wait(VENDOR_SELL_BATCH_DELAY, ProcessVendorSellBatch)
+        else
+            ProcessVendorSellBatch()
+        end
     end
+
+    AH.vendorSellInProgress = true
+    ProcessVendorSellBatch()
 end
 _G.SellQualifiedItemsFromDialog = AH.SellQualifiedItemsFromDialog
 
