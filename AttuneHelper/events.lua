@@ -35,6 +35,8 @@ AH.lastUnitKillAccountRefreshTime = AH.lastUnitKillAccountRefreshTime or 0
 AH.UNIT_KILL_ACCOUNT_REFRESH_COOLDOWN = AH.UNIT_KILL_ACCOUNT_REFRESH_COOLDOWN or 0.75
 AH.lastAttuneChatSystemHandledAt = AH.lastAttuneChatSystemHandledAt or 0
 AH.ATTUNE_CHAT_SYSTEM_BURST_WINDOW = AH.ATTUNE_CHAT_SYSTEM_BURST_WINDOW or 0.8 -- ʕ •ᴥ•ʔ✿ De-dupe chat storms during batch attunes ✿ ʕ •ᴥ•ʔ
+AH.pendingAttuneRefresh = AH.pendingAttuneRefresh or false
+AH.ATTUNE_REFRESH_BATCH_DELAY = AH.ATTUNE_REFRESH_BATCH_DELAY or 0.25
 
 -- Session state variables
 AH.isSCKLoaded = false
@@ -47,6 +49,35 @@ _G.isSCKLoaded = AH.isSCKLoaded
 _G.cannotEquipOffHandWeaponThisSession = AH.cannotEquipOffHandWeaponThisSession
 _G.lastAttemptedSlotForEquip = AH.lastAttemptedSlotForEquip
 _G.lastAttemptedItemTypeForEquip = AH.lastAttemptedItemTypeForEquip
+
+local function RefreshAttuneCountsAndSnapshot()
+    if AH.GetCurrentAttuneCounts then
+        AH.GetCurrentAttuneCounts()
+    end
+    if AH.EnsureDailyAttuneSnapshotCurrent then
+        AH.EnsureDailyAttuneSnapshotCurrent()
+    end
+end
+
+function AH.ScheduleAttuneRefresh(delay)
+    if AH.pendingAttuneRefresh then
+        return
+    end
+
+    if not AH.Wait then
+        RefreshAttuneCountsAndSnapshot()
+        return
+    end
+
+    AH.pendingAttuneRefresh = true
+    AH.Wait(delay or AH.ATTUNE_REFRESH_BATCH_DELAY or 0.25, function()
+        AH.pendingAttuneRefresh = false
+        if type(ItemLocIsLoaded) == "function" and not ItemLocIsLoaded() then
+            return
+        end
+        RefreshAttuneCountsAndSnapshot()
+    end)
+end
 
 -- ʕ •ᴥ•ʔ✿ Performance helper for auto-equip throttling ✿ ʕ •ᴥ•ʔ
 function AH.ShouldTriggerAutoEquip()
@@ -603,8 +634,7 @@ function AH.OnEvent(self, event, arg1)
             return
         end
 
-        AH.GetCurrentAttuneCounts()
-        AH.EnsureDailyAttuneSnapshotCurrent()
+        AH.ScheduleAttuneRefresh()
 
         local updateMask = AH.UPDATE_MASK or { FULL_LIST = 1, OBTAINED = 2, ATTUNED_PERCENT = 4 }
 
