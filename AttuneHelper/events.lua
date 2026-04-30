@@ -36,6 +36,7 @@ AH.UNIT_KILL_ACCOUNT_REFRESH_COOLDOWN = AH.UNIT_KILL_ACCOUNT_REFRESH_COOLDOWN or
 AH.lastAttuneChatSystemHandledAt = AH.lastAttuneChatSystemHandledAt or 0
 AH.ATTUNE_CHAT_SYSTEM_BURST_WINDOW = AH.ATTUNE_CHAT_SYSTEM_BURST_WINDOW or 0.8 -- ʕ •ᴥ•ʔ✿ De-dupe chat storms during batch attunes ✿ ʕ •ᴥ•ʔ
 AH.pendingAttuneRefresh = AH.pendingAttuneRefresh or false
+AH.pendingCustomUIBRefresh = AH.pendingCustomUIBRefresh or false
 AH.ATTUNE_REFRESH_BATCH_DELAY = AH.ATTUNE_REFRESH_BATCH_DELAY or 0.25
 
 -- Session state variables
@@ -77,6 +78,51 @@ function AH.ScheduleAttuneRefresh(delay)
         end
         RefreshAttuneCountsAndSnapshot()
     end)
+end
+
+function AH.ScheduleCustomUIBRefresh()
+    if AH.pendingCustomUIBRefresh then
+        return
+    end
+
+    AH.pendingCustomUIBRefresh = true
+
+    AH.Wait(0.1, function()
+        AH.pendingCustomUIBRefresh = false
+
+        if AH.RequestUpdateList then
+            local updateMask = AH.UPDATE_MASK or {
+                FULL_LIST = 1,
+                OBTAINED = 2,
+                ATTUNED_PERCENT = 4
+            }
+
+            AH.RequestUpdateList(bit.bor(updateMask.OBTAINED, updateMask.ATTUNED_PERCENT))
+        end
+    end)
+end
+
+function AH.HookCustomItemUpdateButton()
+    if AH.hookedCustomItemUpdateButton then
+        return
+    end
+
+    if type(_cu_uib) ~= "function" then
+        return
+    end
+
+    AH.hookedCustomItemUpdateButton = true
+    AH.old_cu_uib = _cu_uib
+
+    _cu_uib = function(...)
+        local results = { AH.old_cu_uib(...) }
+
+        if AH.ScheduleCustomUIBRefresh then
+            AH.ScheduleCustomUIBRefresh()
+        end
+
+        return unpack(results)
+    end
 end
 
 -- ʕ •ᴥ•ʔ✿ Performance helper for auto-equip throttling ✿ ʕ •ᴥ•ʔ
@@ -599,11 +645,26 @@ function AH.OnEvent(self, event, arg1)
         ScheduleVendorCompatRefresh(1, 0.1)
         ScheduleAttuneSnapshotRetry(20, 0.5)
 
+        if AH.HookCustomItemUpdateButton then
+            AH.HookCustomItemUpdateButton()
+            if AH.Wait then
+                AH.Wait(0.5, AH.HookCustomItemUpdateButton)
+                AH.Wait(2, AH.HookCustomItemUpdateButton)
+            end
+        end
+
         if self ~= AH.UI.mainFrame then
             self:UnregisterEvent("ADDON_LOADED")
         end
     elseif event == "PLAYER_LOGIN" then
         self:UnregisterEvent("PLAYER_LOGIN")
+
+        if AH.HookCustomItemUpdateButton and AH.Wait then
+            AH.HookCustomItemUpdateButton()
+            AH.Wait(0.5, AH.HookCustomItemUpdateButton)
+        elseif AH.HookCustomItemUpdateButton then
+            AH.HookCustomItemUpdateButton()
+        end
 
         if AH.InitCharProfileAfterLoad then
             AH.InitCharProfileAfterLoad()
