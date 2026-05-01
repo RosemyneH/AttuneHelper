@@ -7,7 +7,7 @@ Automaticly handles new attunes and your gear sets for quick and seamless gaming
 - **Automatic Gear Swapping** - Seamlessly equips attunement gear when needed
 - **Smart Inventory Management** - Optimized bag caching for better performance
 - **Dual UI Modes** - Choose between compact mini-mode or full-featured interface
-- **Combat-Aware** - Auto-equips attunable items after combat ends
+- **Combat-Aware** - Auto-equips attunable items after each item you attune
 
 ### ⚔️ Weapon Control System
 - **Granular Weapon Type Controls** - Fine-tune which weapon types can be equipped
