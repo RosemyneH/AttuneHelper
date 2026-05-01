@@ -578,11 +578,6 @@ function AH.InitializeUI()
         AH.SetupMiniButtonHandlers()
     end
 
-    -- Initialize options panels
-    if AH.InitializeAllOptions then
-        AH.InitializeAllOptions()
-    end
-
     -- Register events now that UI is ready
     AH.RegisterEvents()
 end

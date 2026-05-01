@@ -708,6 +708,61 @@ function AH.NativeToServerBagSlot(nativeBag, nativeSlot)
 end
 _G.NativeToServerBagSlot = AH.NativeToServerBagSlot
 
+function AH.GetItemLinkFromNativeBagSlot(nativeBag, nativeSlot)
+    if nativeBag == nil or nativeSlot == nil then
+        return nil
+    end
+    local link = GetContainerItemLink(nativeBag, nativeSlot)
+    if link and link ~= "" then
+        return link
+    end
+    local cg = _G.Custom_GetItemLinkBySlot
+    if type(cg) ~= "function" then
+        return nil
+    end
+    local serverBag, serverSlot = AH.NativeToServerBagSlot(nativeBag, nativeSlot)
+    if not serverBag then
+        return nil
+    end
+    local ok, result = pcall(cg, serverBag, serverSlot)
+    if ok and result and result ~= "" then
+        return result
+    end
+    return nil
+end
+_G.GetItemLinkFromNativeBagSlot = AH.GetItemLinkFromNativeBagSlot
+
+function AH.GetBagRecLink(rec)
+    if not rec or rec.bag == nil or rec.slot == nil then
+        return nil
+    end
+    return AH.GetItemLinkFromNativeBagSlot(rec.bag, rec.slot)
+end
+_G.GetBagRecLink = AH.GetBagRecLink
+
+function AH.GetBagSlotSessionKey(rec)
+    if not rec or rec.bag == nil or rec.slot == nil then
+        return nil
+    end
+    return tostring(rec.bag) .. ":" .. tostring(rec.slot)
+end
+_G.GetBagSlotSessionKey = AH.GetBagSlotSessionKey
+
+function AH.GetBagRecName(rec)
+    local link = AH.GetBagRecLink(rec)
+    if link then
+        local name = AH.GetItemDisplayName(nil, link)
+        if name and name ~= "" then
+            return name
+        end
+    end
+    if rec and rec.itemID then
+        return AH.GetItemDisplayName(rec.itemID, nil)
+    end
+    return nil
+end
+_G.GetBagRecName = AH.GetBagRecName
+
 function AH.IsSoulboundFromNativeBagSlot(nativeBag, nativeSlot)
     if not _G.Custom_IsItemSoulbound then return false end
 
@@ -830,7 +885,7 @@ function AH.ConvertForgeMapToApiParam(forgeLevelMapValue)
 end
 _G.ConvertForgeMapToApiParam = AH.ConvertForgeMapToApiParam
 
--- ʕ •ᴥ•ʔ✿ Forge level per-link cache (weak values auto-evict) ✿ ʕ •ᴥ•ʔ
+-- ʕ •ᴥ•ʔ✿ Forge level per-link cache (weak keys — entry drops when link unreferenced) ✿ ʕ •ᴥ•ʔ
 local forgeLevelCache = setmetatable({}, { __mode = "k" })
 
 function AH.InvalidateForgeLevelCache()

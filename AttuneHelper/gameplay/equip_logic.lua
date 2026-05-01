@@ -16,6 +16,13 @@ local attunableListCache = {
 local ATTUNABLE_LIST_CACHE_TTL = 0.5
 
 -- ʕ •ᴥ•ʔ✿ Cursor safety tooltip for disenchant preparation ✿ ʕ •ᴥ•ʔ
+local function BagRecAhsetKey(rec)
+    if not rec then
+        return nil
+    end
+    return AH.CreateItemIdentifier(AH.GetBagRecLink(rec), AH.GetBagRecName(rec))
+end
+
 local AHDisenchantSafetyTooltip =
     CreateFrame("GameTooltip", "AHDisenchantSafetyTooltip", UIParent, "GameTooltipTemplate")
 AHDisenchantSafetyTooltip:SetFrameStrata("TOOLTIP")
@@ -93,7 +100,8 @@ local function ShowDisenchantSafetyTooltip(itemList, headerText, subtitleText)
     end
 end
 
-local itemInfoEquipCache = setmetatable({}, { __mode = "v" })
+-- ʕ •ᴥ•ʔ✿ Weak keys: entries collect once nothing else holds the link string ✿ ʕ •ᴥ•ʔ
+local itemInfoEquipCache = setmetatable({}, { __mode = "k" })
 local lastEquipCacheCleanup = 0
 local EQUIP_CACHE_CLEANUP_INTERVAL = 45
 
@@ -102,7 +110,7 @@ local function GetCachedItemInfoForEquip(itemLink)
 
     local currentTime = GetTime()
     if currentTime - lastEquipCacheCleanup > EQUIP_CACHE_CLEANUP_INTERVAL then
-        itemInfoEquipCache = setmetatable({}, { __mode = "v" })
+        itemInfoEquipCache = setmetatable({}, { __mode = "k" })
         lastEquipCacheCleanup = currentTime
     end
 
@@ -221,7 +229,12 @@ local function BuildPolicyToken()
 end
 
 function AH.CanEquipItemPolicyCheck(candidateRec)
-    if not candidateRec or not candidateRec.link then
+    if not candidateRec then
+        return false
+    end
+
+    local itemLink = AH.GetBagRecLink(candidateRec)
+    if not itemLink then
         return false
     end
 
@@ -236,7 +249,6 @@ function AH.CanEquipItemPolicyCheck(candidateRec)
         return candidateRec.policyResult
     end
 
-    local itemLink = candidateRec.link
     local itemBag = candidateRec.bag
     local itemSlotInBag = candidateRec.slot
     local itemId = candidateRec.itemID or AH.GetItemIDFromLink(itemLink)
@@ -328,15 +340,16 @@ _G.CanEquipItemPolicyCheck = AH.CanEquipItemPolicyCheck
 -- Core equip action
 ------------------------------------------------------------------------
 function AH.performEquipAction(itemRecord, targetSlotID, currentSlotNameForAction)
-    if not itemRecord or not itemRecord.link then
+    if not itemRecord or not itemRecord.bag or not itemRecord.slot then
         return false
     end
 
-    if not itemRecord.bag or not itemRecord.slot then
+    local itemLinkToEquip = AH.GetBagRecLink(itemRecord)
+    if not itemLinkToEquip then
         return false
     end
 
-    local itemLinkToEquip = itemRecord.link
+    local sessionKey = AH.GetBagSlotSessionKey(itemRecord)
     local itemEquipLocToEquip = itemRecord.equipSlot
     local sckEventsTemporarilyUnregistered = false
 
@@ -348,7 +361,7 @@ function AH.performEquipAction(itemRecord, targetSlotID, currentSlotNameForActio
     end
 
     -- ʕ●ᴥ●ʔ✿ Session protection - prevent re-equipping same item ✿ ʕ●ᴥ●ʔ
-    if AH.sessionEquippedItems and AH.sessionEquippedItems[itemRecord.link] then
+    if AH.sessionEquippedItems and sessionKey and AH.sessionEquippedItems[sessionKey] then
         return false
     end
 
@@ -425,8 +438,8 @@ function AH.performEquipAction(itemRecord, targetSlotID, currentSlotNameForActio
 
     if didEquip then
         -- ʕ●ᴥ●ʔ✿ Mark item as equipped this session ✿ ʕ●ᴥ●ʔ
-        if AH.sessionEquippedItems then
-            AH.sessionEquippedItems[itemRecord.link] = true
+        if AH.sessionEquippedItems and sessionKey then
+            AH.sessionEquippedItems[sessionKey] = true
         end
         -- ʕ •ᴥ•ʔ✿ Only refresh the bag we actually mutated; avoid a 5-bag rescan
         -- every slot.  BAG_UPDATE will follow up with the authoritative refresh. ✿ ʕ •ᴥ•ʔ
@@ -491,8 +504,8 @@ function AH.GetAttunableItemNamesList()
                             if AH.ItemQualifiesForBagEquipRec(rec, isStrictEquip) then
                                 if AH.CanEquipItemPolicyCheck(rec) then
                                     table.insert(itemData, {
-                                        name = rec.name or "Unknown Item",
-                                        link = rec.link,
+                                        name = AH.GetBagRecName(rec) or "Unknown Item",
+                                        link = AH.GetBagRecLink(rec),
                                         id = itemId
                                     })
                                 end
@@ -521,8 +534,8 @@ local function recDesignatedForSecondaryHand(rec)
     if not rec or not AHSetList then
         return false
     end
-    local identifier = rec.identifier or AH.CreateItemIdentifier(rec.link, rec.name)
-    local d = AHSetList[identifier] or AHSetList[rec.name]
+    local identifier = BagRecAhsetKey(rec)
+    local d = AHSetList[identifier] or AHSetList[AH.GetBagRecName(rec)]
     local prepOH = AH.AHSET_PREP_OFFHAND_SLOT or "PrepOffHandSlot"
     return d == "SecondaryHandSlot" or d == prepOH
 end
@@ -531,8 +544,8 @@ local function recDesignatedForSecondaryHandExact(rec)
     if not rec or not AHSetList then
         return false
     end
-    local identifier = rec.identifier or AH.CreateItemIdentifier(rec.link, rec.name)
-    local d = AHSetList[identifier] or AHSetList[rec.name]
+    local identifier = BagRecAhsetKey(rec)
+    local d = AHSetList[identifier] or AHSetList[AH.GetBagRecName(rec)]
     return d == "SecondaryHandSlot"
 end
 
@@ -642,8 +655,8 @@ local function findAhsetPrepOffhandBagRec(isEquipNewAffixesOnlyEnabled)
         if bagTbl then
             for _, rec in pairs(bagTbl) do
                 if rec and rec.inSet and rec.equipSlot then
-                    local identifier = rec.identifier
-                    local designated = AHSetList[identifier] or AHSetList[rec.name]
+                    local identifier = BagRecAhsetKey(rec)
+                    local designated = AHSetList[identifier] or AHSetList[AH.GetBagRecName(rec)]
                     if designated == prepOH then
                         local el = rec.equipSlot
                         local fitsOH = (el == "INVTYPE_WEAPONOFFHAND"
@@ -684,8 +697,8 @@ local function collectAhsetOneHandMainHandCandidates()
         if bagTbl then
             for _, rec in pairs(bagTbl) do
                 if rec and rec.inSet then
-                    local identifier = rec.identifier
-                    local designated = AHSetList[identifier] or AHSetList[rec.name]
+                    local identifier = BagRecAhsetKey(rec)
+                    local designated = AHSetList[identifier] or AHSetList[AH.GetBagRecName(rec)]
                     local prepMH = AH.AHSET_PREP_MAINHAND_SLOT or "PrepMainHandSlot"
                     if designated == "MainHandSlot" or designated == prepMH then
                         local el = rec.equipSlot
@@ -779,7 +792,7 @@ function AH.TryPrepAhsetOneHandMainHandFromTwoHander()
     end
 
     table.sort(cands, function(a, b)
-        return AH.ShouldPrioritizeItem(a.link, b.link)
+        return AH.ShouldPrioritizeItem(AH.GetBagRecLink(a), AH.GetBagRecLink(b))
     end)
 
     local invSlotID = GetInventorySlotInfo("MainHandSlot")
@@ -907,7 +920,7 @@ function AH.TrySwapFinishedOffHandToPrepOH()
     if not rec then
         return false
     end
-    if rec.link == ohLink then
+    if AH.GetBagRecLink(rec) == ohLink then
         return false
     end
 
@@ -1029,8 +1042,8 @@ function AH.EquipAllAttunables()
                 if bagTbl and not p3Matched then
                     for _, rec in pairs(bagTbl) do
                         if not p3Matched and rec and rec.inSet then
-                            local recIdentifier = rec.identifier
-                            if (setKey == recIdentifier or setKey == rec.name) and AH.CanEquipItemPolicyCheck(rec) then
+                            local recIdentifier = BagRecAhsetKey(rec)
+                            if (setKey == recIdentifier or setKey == AH.GetBagRecName(rec)) and AH.CanEquipItemPolicyCheck(rec) then
                                 targetedSlots[resolvedTarget] = true
                                 p3Matched = true
                             end
@@ -1213,7 +1226,7 @@ function AH.EquipAllAttunables()
 
         -- Sort candidates by priority (higher forge level and lower progress first)
         table.sort(attunableCandidates, function(a, b)
-            return AH.ShouldPrioritizeItem(a.link, b.link)
+            return AH.ShouldPrioritizeItem(AH.GetBagRecLink(a), AH.GetBagRecLink(b))
         end)
 
         -- Try to equip the best candidate
@@ -1245,7 +1258,7 @@ function AH.EquipAllAttunables()
                     -- ʕ •ᴥ•ʔ✿ Track this item as recently equipped ✿ ʕ •ᴥ•ʔ
                     recentlyEquippedItems[slotName] = {
                         time = GetTime(),
-                        itemLink = rec.link,
+                        itemLink = AH.GetBagRecLink(rec),
                         type = "P2_Attunable"
                     }
                     AH.TrackCombatEquip()
@@ -1265,9 +1278,8 @@ function AH.EquipAllAttunables()
             return
         end
         for _, rec_set in ipairs(candidates) do
-            -- ʕ •ᴥ•ʔ✿ Use pre-cached rec identifier for AHSet lookup ✿ ʕ •ᴥ•ʔ
-            local identifier = rec_set.identifier
-            local designatedSlotForCandidate = AHSetList[identifier] or AHSetList[rec_set.name]
+            local identifier = BagRecAhsetKey(rec_set)
+            local designatedSlotForCandidate = AHSetList[identifier] or AHSetList[AH.GetBagRecName(rec_set)]
             if designatedSlotForCandidate == slotName then
                 local candidateEquipLoc = rec_set.equipSlot
                 local equipThisSetItem = false
@@ -1330,7 +1342,7 @@ function AH.EquipAllAttunables()
                             -- ʕ •ᴥ•ʔ✿ Track this item as recently equipped ✿ ʕ •ᴥ•ʔ
                             recentlyEquippedItems[slotName] = {
                                 time = GetTime(),
-                                itemLink = rec_set.link,
+                                itemLink = AH.GetBagRecLink(rec_set),
                                 type = "P3_AHSet"
                             }
                             AH.TrackCombatEquip()
@@ -1482,9 +1494,9 @@ function AH.EquipAHSetOnly()
                 if bagTbl and not chosenCandidate then
                     for _, rec in pairs(bagTbl) do
                         if not chosenCandidate and rec then
-                            local identifier = rec.identifier
-                            local designatedSlot = AHSetList[identifier] or AHSetList[rec.name]
-                            if designatedSlot == targetSlot and canCandidateEquipSlot(targetSlot, rec.equipSlot, currentMHLink, rec.link) then
+                            local identifier = BagRecAhsetKey(rec)
+                            local designatedSlot = AHSetList[identifier] or AHSetList[AH.GetBagRecName(rec)]
+                            if designatedSlot == targetSlot and canCandidateEquipSlot(targetSlot, rec.equipSlot, currentMHLink, AH.GetBagRecLink(rec)) then
                                 chosenCandidate = rec
                                 foundAnyAHSetCandidate = true
                             end

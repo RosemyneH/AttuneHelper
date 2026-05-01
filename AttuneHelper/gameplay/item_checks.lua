@@ -117,7 +117,9 @@ _G.ItemQualifiesForBagEquip = AH.ItemQualifiesForBagEquip
 -- ʕ •ᴥ•ʔ✿ Rec-scoped wrapper: memoizes the answer on the rec itself so hot
 -- loops stop making calls once a rec has been evaluated this cycle. ✿ ʕ •ᴥ•ʔ
 function AH.ItemQualifiesForBagEquipRec(rec, isEquipNewAffixesOnlyEnabled)
-    if not rec or not rec.link then return false end
+    if not rec then return false end
+    local link = AH.GetBagRecLink(rec)
+    if not link then return false end
     local gen = AH.bagCacheGeneration or 0
     local now = GetTime()
     if rec.qualifyGen == gen
@@ -126,7 +128,7 @@ function AH.ItemQualifiesForBagEquipRec(rec, isEquipNewAffixesOnlyEnabled)
     then
         return rec.qualifyResult
     end
-    local result = AH.ItemQualifiesForBagEquip(rec.itemID, rec.link, isEquipNewAffixesOnlyEnabled)
+    local result = AH.ItemQualifiesForBagEquip(rec.itemID, link, isEquipNewAffixesOnlyEnabled)
     rec.qualifyGen = gen
     rec.qualifyStrict = isEquipNewAffixesOnlyEnabled
     rec.qualifyStamp = now

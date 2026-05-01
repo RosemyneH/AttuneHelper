@@ -1,0 +1,21 @@
+-- ʕ •ᴥ•ʔ✿ Lazy-loaded locale (Traditional Chinese) ✿ ʕ •ᴥ•ʔ
+return {
+    ["Equip Attunables"] = "裝備可調諧物品",
+    ["Prepare Disenchant"] = "準備分解",
+    ["Vendor Attuned"] = "出售已調諧",
+    ["Vendor Attuned Items"] = "出售已調諧物品",
+    ["System Default"] = "系統預設",
+    ["English (US)"] = "英語 (US)",
+    ["繁體中文"] = "繁體中文",
+    ["Select Language:"] = "選擇語言：",
+    ["Moves fully attuned mythic items to bag %d."] = "將完全調諧的史詩物品移至背包%d。",
+    ["Clears target bag first, then fills with disenchant-ready items."] = "先清空目標背包，再填入待分解物品。",
+    ["Attunable Items: %d"] = "可調諧物品：%d",
+    ["Qualifying Attunables (%d):"] = "符合條件的可調諧物品（%d）：",
+    ["No qualifying attunables in bags."] = "背包中沒有符合條件的可調諧物品。",
+    ["Items to be sold (%d):"] = "待販售物品（%d）：",
+    ["No items will be sold based on current settings."] = "依目前設定不會販售任何物品。",
+    ["Open merchant window to sell these items."] = "打開商人視窗來出售這些物品。",
+    ["Items must be: Mythic, 100% attuned, soulbound, not in sets/ignore lists."] = "物品需為：史詩、100%調諧、已綁定，不在套裝/忽略列表。",
+    ["Hold Shift for additional options"] = "按住Shift鍵查看其他選項",
+}

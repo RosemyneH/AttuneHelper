@@ -1,0 +1,38 @@
+-- ʕ •ᴥ•ʔ✿ Lazy-loaded locale (Spanish) ✿ ʕ •ᴥ•ʔ
+return {
+    ["Equip Attunables"]                                                              = "Equipar sincronizables",
+    ["Prepare Disenchant"]                                                            = "Preparar desencantar",
+    ["Vendor Attuned"]                                                                = "Vender sincronizados",
+    ["Vendor Attuned Items"]                                                          = "Vender objetos sincronizados",
+    ["System Default"]                                                                = "Predeterminado del sistema",
+    ["English (US)"]                                                                  = "Inglés (EE.UU.)",
+    ["Español"]                                                                       = "Español",
+    ["Deutsch"]                                                                       = "Alemán",
+    ["Select Language:"]                                                              = "Seleccionar idioma:",
+    ["Moves fully attuned mythic items to bag %d."]                                   = "Mueve los objetos míticos totalmente sincronizados a la bolsa %d.",
+    ["Clears target bag first, then fills with disenchant-ready items."]              =
+    "Vacía primero la bolsa objetivo y luego la llena con objetos listos para desencantar.",
+    ["Attunable Items: %d"]                                                           = "Objetos sincronizables: %d",
+    ["Qualifying Attunables (%d):"]                                                   = "Sincronizables elegibles (%d):",
+    ["No qualifying attunables in bags."]                                             = "No hay sincronizables elegibles en las bolsas.",
+    ["Items to be sold (%d):"]                                                        = "Objetos a vender (%d):",
+    ["No items will be sold based on current settings."]                              = "No se venderán objetos según la configuración actual.",
+    ["Open merchant window to sell these items."]                                     = "Abre la ventana del vendedor para vender estos objetos.",
+    ["Items must be: Mythic, 100% attuned, soulbound, not in sets/ignore lists."]     =
+    "Los objetos deben ser míticos y estar: 100% sincronizados, ligados, fuera de conjuntos/listas de ignorados.",
+    ["Update AHSet"]                                                                  = "Sobreescribir AHSet",
+    ["Sets AHSet to be equal to your currently equiped items."]                       = "Sobreescribe AHSet con tus obejtos equipados.",
+    ["This will delete your current AHSet."]                                          = "Esto borrará el AHSet actual.",
+    ["Are you sure you want to update AHSet to match your currently equipped items?"] =
+    "¿De verdad quieres sobreescribir AHSet con tus objetos equipados?",
+    ["Yes"]                                                                           = "Sí",
+    ["Cancel"]                                                                        = "Cancelar",
+    ["Toggle Auto-Equip"]                                                             = "Auto-Equipar",
+    ["Disable Auto-Equip"]                                                            = "Desactivar Auto-Equipar",
+    ["Enable Auto-Equip"]                                                             = "Activar Auto-Equipar",
+    ["Currently enabled."]                                                            = "Ahora está activado",
+    ["Currently disabled."]                                                           = "Ahora está desactivado",
+    ["Open Settings"]                                                                 = "Ajustes",
+    ["Opens the General Logic Options settings page."]                                = "Abre la pagina de ajustes de Opciones Generales de Lógica.",
+    ["Hold Shift for additional options"]                                             = "Mantén Shift presionado para opciones adicionales",
+}

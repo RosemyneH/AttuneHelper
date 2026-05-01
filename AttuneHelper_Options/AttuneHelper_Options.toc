@@ -1,0 +1,8 @@
+## Interface: 30300
+## Title: Attune|cFFFFA500Helper|r Options
+## Notes: Load-on-demand Interface Options UI for AttuneHelper
+## Dependencies: AttuneHelper
+## LoadOnDemand: 1
+## Version: 1.8.0
+
+options_panels.lua

@@ -9,12 +9,10 @@ AH.bagCacheGeneration = AH.bagCacheGeneration or 0
 AH.lastBagRefreshTime = AH.lastBagRefreshTime or {}
 AH.lastFullBagRefreshTime = AH.lastFullBagRefreshTime or 0
 
--- ʕ •ᴥ•ʔ✿ Enhanced GetItemInfo cache with TTL and size limits ✿ ʕ •ᴥ•ʔ
-AH.itemInfoCache = AH.itemInfoCache or setmetatable({}, {__mode = "v"})
-AH.itemInfoCacheSize = AH.itemInfoCacheSize or 0
+-- ʕ •ᴥ•ʔ✿ GetItemInfo cache: weak keys so rows drop when item links are released ✿ ʕ •ᴥ•ʔ
+AH.itemInfoCache = AH.itemInfoCache or setmetatable({}, { __mode = "k" })
 AH.lastItemInfoCleanup = AH.lastItemInfoCleanup or 0
-AH.ITEMINFO_CACHE_CLEANUP_INTERVAL = 30 -- Clean every 30 seconds
-AH.MAX_ITEMINFO_CACHE_SIZE = 500 -- Maximum cache entries
+AH.ITEMINFO_CACHE_CLEANUP_INTERVAL = 30 -- Full wipe interval (bounds stale keys after churn)
 
 -- ʕ •ᴥ•ʔ✿ Performance tracking ✿ ʕ •ᴥ•ʔ
 AH.cacheStats = AH.cacheStats or {
@@ -25,6 +23,47 @@ AH.cacheStats = AH.cacheStats or {
 
 local bagSlotCache   = AH.bagSlotCache
 local equipSlotCache = AH.equipSlotCache
+
+AH.bagRecArena = AH.bagRecArena or {}
+
+local function createMemoryArena()
+	return {
+		rows = {},
+		used = 0,
+	}
+end
+
+local function resetMemoryArena(arena)
+	if not arena then
+		return
+	end
+	for i = 1, arena.used do
+		local row = arena.rows[i]
+		if row then
+			wipe(row)
+		end
+	end
+	arena.used = 0
+end
+
+local function allocArenaRow(arena)
+	arena.used = arena.used + 1
+	local row = arena.rows[arena.used]
+	if not row then
+		row = {}
+		arena.rows[arena.used] = row
+	end
+	return row
+end
+
+local function getBagRecArena(bagID)
+	local a = AH.bagRecArena[bagID]
+	if not a then
+		a = createMemoryArena()
+		AH.bagRecArena[bagID] = a
+	end
+	return a
+end
 
 local function InsertRecordIntoEquipCache(rec)
     if not rec or not rec.equipSlot then
@@ -60,13 +99,10 @@ end
 local function GetCachedItemInfo(link)
     if not link then return nil end
 
-    -- Clean cache periodically or when too large
     local currentTime = GetTime()
-    if currentTime - AH.lastItemInfoCleanup > AH.ITEMINFO_CACHE_CLEANUP_INTERVAL or AH.itemInfoCacheSize > AH.MAX_ITEMINFO_CACHE_SIZE then
-        AH.itemInfoCache = setmetatable({}, {__mode = "v"})
-        AH.itemInfoCacheSize = 0
+    if currentTime - AH.lastItemInfoCleanup > AH.ITEMINFO_CACHE_CLEANUP_INTERVAL then
+        AH.itemInfoCache = setmetatable({}, { __mode = "k" })
         AH.lastItemInfoCleanup = currentTime
-        --AH.print_debug_general("ItemInfo cache cleaned")
     end
 
     if AH.itemInfoCache[link] then
@@ -77,13 +113,11 @@ local function GetCachedItemInfo(link)
         AH.cacheStats.misses = AH.cacheStats.misses + 1
         local name, _, _, _, _, _, _, _, equipLoc = GetItemInfo(link)
         if name then
-            AH.itemInfoCache[link] = {name, equipLoc}
-            AH.itemInfoCacheSize = AH.itemInfoCacheSize + 1
-        elseif not name then
+            AH.itemInfoCache[link] = { name, equipLoc }
+        else
             local id = CustomExtractItemId(link)
-            local name, _, _, _, _, _, _, _, equipLoc = GetItemInfoCustom(id)
-            AH.itemInfoCache[link] = {name, equipLoc}
-            AH.itemInfoCacheSize = AH.itemInfoCacheSize + 1
+            name, _, _, _, _, _, _, _, equipLoc = GetItemInfoCustom(id)
+            AH.itemInfoCache[link] = { name, equipLoc }
         end
         
         local cached = AH.itemInfoCache[link]
@@ -102,7 +136,14 @@ function AH.UpdateBagCache(bagID)
         return
     end
 
-    bagSlotCache[bagID] = {}
+    local bagTbl = bagSlotCache[bagID]
+    if not bagTbl then
+        bagTbl = {}
+        bagSlotCache[bagID] = bagTbl
+    end
+    local arena = getBagRecArena(bagID)
+    resetMemoryArena(arena)
+    wipe(bagTbl)
 
     -- Iterate slots in this bag
     for slotID = 1, GetContainerNumSlots(bagID) do
@@ -119,10 +160,8 @@ function AH.UpdateBagCache(bagID)
                         canPlayerAttune = (CanAttuneItemHelper(itemID) == 1)
                     end
 
-                    -- ʕ •ᴥ•ʔ✿ Inline identifier build so we don't re-enter
-                    -- GetItemIDFromLink via CreateItemIdentifier on every slot. ✿ ʕ •ᴥ•ʔ
-                    local identifier = itemID and (name .. "|" .. tostring(itemID)) or name
-                    local inSet = (AHSetList and (AHSetList[identifier] ~= nil or AHSetList[name] ~= nil))
+                    local idKey = itemID and (name .. "|" .. tostring(itemID)) or name
+                    local inSet = (AHSetList and (AHSetList[idKey] ~= nil or AHSetList[name] ~= nil))
 
                     if canPlayerAttune or inSet then
                         -- ʕ •ᴥ•ʔ✿ Cache stable per-rec fields so hot loops don't
@@ -147,23 +186,19 @@ function AH.UpdateBagCache(bagID)
                                 bountyValue = v
                             end
                         end
-                        local rec = {
-                            bag          = bagID,
-                            slot         = slotID,
-                            link         = link,
-                            name         = name,
-                            equipSlot    = equipLoc,
-                            isAttunable  = canPlayerAttune,
-                            inSet        = inSet,
-                            itemID       = itemID,
-                            identifier   = identifier,
-                            forgeLevel   = forgeLevel,
-                            isTGCompat2H = isTGCompat2H,
-                            isSoulbound  = isSoulbound,
-                            isMythic     = isMythic,
-                            bountyValue  = bountyValue,
-                        }
-                        bagSlotCache[bagID][slotID] = rec
+                        local rec = allocArenaRow(arena)
+                        rec.bag = bagID
+                        rec.slot = slotID
+                        rec.equipSlot = equipLoc
+                        rec.isAttunable = canPlayerAttune
+                        rec.inSet = inSet
+                        rec.itemID = itemID
+                        rec.forgeLevel = forgeLevel
+                        rec.isTGCompat2H = isTGCompat2H
+                        rec.isSoulbound = isSoulbound
+                        rec.isMythic = isMythic
+                        rec.bountyValue = bountyValue
+                        bagTbl[slotID] = rec
                     end
                 end
             end

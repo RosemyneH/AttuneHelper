@@ -1,6 +1,29 @@
 -- ʕ •ᴥ•ʔ✿ Gameplay · Slash commands ✿ ʕ •ᴥ•ʔ
 local AH = _G.AttuneHelper
 
+function AH.PrintSavedVarsFootprint()
+    local function countPairs(t)
+        if type(t) ~= "table" then return 0 end
+        local n = 0
+        for _ in pairs(t) do
+            n = n + 1
+        end
+        return n
+    end
+    local nProfiles = 0
+    if AttuneHelperDB and AttuneHelperDB.CharProfiles then
+        for _ in pairs(AttuneHelperDB.CharProfiles) do
+            nProfiles = nProfiles + 1
+        end
+    end
+    print("|cff00ff00[AttuneHelper]|r SavedVariables footprint (entry counts):")
+    print(string.format("  CharProfiles (GUID keys): %d", nProfiles))
+    print(string.format("  AHIgnoreList entries: %d", countPairs(_G.AHIgnoreList)))
+    print(string.format("  AHVendorList entries: %d", countPairs(_G.AHVendorList)))
+    print(string.format("  AHSetList entries (active preset): %d", countPairs(_G.AHSetList)))
+    print("|cffffd200Tip:|r Removing stale CharProfiles keys or shrinking vendor/ignore lists reduces SavedVariables size on disk.")
+end
+
 ------------------------------------------------------------------------
 -- Main /ath command
 ------------------------------------------------------------------------
@@ -402,6 +425,7 @@ function AH.SlashCommand(msg)
         print("  |cffffd200/ah togglemini|r - Toggle mini/full mode")
         print("  |cffffd200/ah reset|r - Reset frame positions to center")
         print("  |cffffd200/ah resetday|r - Reset today's attune snapshot to current server counts")
+        print("  |cffffd200/ah savedvars|r - Print SavedVariables table sizes (audit footprint)")
         print("  |cffffd200/ah bag|r - Toggle disenchant target bag (0 or 1)")
         print("  |cffffd200/ah weapons|r - Show weapon control settings")
         print("  |cffffd200/ah blacklist <slot>|r - Toggle slot blacklist")
@@ -415,6 +439,13 @@ function AH.SlashCommand(msg)
         print(string.format("|cff00ff00[AttuneHelper]|r Current memory usage: %.1fKB", memAfter))
         print(string.format("|cff00ff00[AttuneHelper]|r Bag cache entries: %d", AH.bagSlotCache and table.getn(AH.bagSlotCache) or 0))
         print(string.format("|cff00ff00[AttuneHelper]|r ItemInfo cache entries: %d", AH.itemInfoCache and table.getn(AH.itemInfoCache) or 0))
+        return
+    end
+
+    if msg == "savedvars" then
+        if AH.PrintSavedVarsFootprint then
+            AH.PrintSavedVarsFootprint()
+        end
         return
     end
     
