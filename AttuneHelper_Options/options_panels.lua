@@ -756,7 +756,8 @@ AH.general_options_list_for_checkboxes = {
     {text = "Vendor preview on Right (Default On)", dbKey = "Vendor preview on Right (Default On)"},
     {text = "Draggable by Right Click", dbKey = "Draggable by Right Click"},
     {text = "Lock AH in Place (Buttons Only Mouse)", dbKey = "Lock AH in Place (Buttons Only Mouse)"},
-    {text = "Use Bag 1 for Disenchant", dbKey = "Use Bag 1 for Disenchant"}
+    {text = "Use Bag 1 for Disenchant", dbKey = "Use Bag 1 for Disenchant"},
+    {text = "Prepare Disenchant Include BoE Mythic Weapons", dbKey = "Prepare Disenchant Include BoE Mythic Weapons"}
 }
 
 -- ʕ •ᴥ•ʔ✿ Weapon control options (separate panel) ✿ ʕ •ᴥ•ʔ

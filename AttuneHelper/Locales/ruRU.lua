@@ -19,5 +19,7 @@ return {
     ["Open merchant window to sell these items."] = "Откройте окно торговца, чтобы продать эти предметы.",
     ["Items must be: Mythic, 100% attuned, soulbound, not in sets/ignore lists."] =
     "Предметы должны быть: мифическими, 100% настроенными, персональными, не в наборах/списках игнора.",
+    ["Prepare Disenchant Include BoE Mythic Weapons"] =
+    "Подготовка распыления: перепродаваемое мифическое оружие BoE (ур. предмета 245)",
     ["Hold Shift for additional options"] = "Удерживайте Shift для дополнительных опций",
 }

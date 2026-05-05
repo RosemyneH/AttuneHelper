@@ -50,6 +50,8 @@ local enUS = {
     "When enabled, Warforged and Lightforged variants cannot be added to the always-vendor list and do not use the always-vendor bypass when selling.",
     ["Items must be: Mythic, 100% attuned, soulbound, not in sets/ignore lists."]     =
     "Items must be: Mythic, 100% attuned, soulbound, not in sets/ignore lists.",
+    ["Prepare Disenchant Include BoE Mythic Weapons"]                                  =
+    "Prepare Disenchant: BoE Mythic weapons (ilvl 245)",
     ["Update AHSet"]                                                                  = "Update AHSet",
     ["Sets AHSet to be equal to your currently equiped items."]                       =
     "Sets AHSet to be equal to your currently equiped items.",

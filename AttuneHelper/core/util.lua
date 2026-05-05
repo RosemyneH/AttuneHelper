@@ -1288,7 +1288,8 @@ function AH.InitializeDefaultSettings()
         ["Lock AH in Place (Buttons Only Mouse)"] = 0,
         ["Hide Center Button in Normal Mode"] = 0,
         ["Hide Disenchant Button"] = 0,  -- ʕ •ᴥ•ʔ✿ Show disenchant button by default ✿ ʕ •ᴥ•ʔ
-        ["Use Bag 1 for Disenchant"] = 0  -- ʕ •ᴥ•ʔ✿ Use bag 0 by default ✿ ʕ •ᴥ•ʔ
+        ["Use Bag 1 for Disenchant"] = 1, 
+        ["Prepare Disenchant Include BoE Mythic Weapons"] = 0,
     }
     for optName, defValue in pairs(generalOptionDefaults) do
         if AttuneHelperDB[optName] == nil then 

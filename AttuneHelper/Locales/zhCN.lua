@@ -17,5 +17,6 @@ return {
     ["No items will be sold based on current settings."] = "根据当前设置不会出售任何物品。",
     ["Open merchant window to sell these items."] = "打开商人窗口以出售这些物品。",
     ["Items must be: Mythic, 100% attuned, soulbound, not in sets/ignore lists."] = "物品要求：史诗，100%调谐，已绑定，不在套装/忽略列表。",
+    ["Prepare Disenchant Include BoE Mythic Weapons"] = "准备分解：可交易史诗武器（BoE，物品等级245）",
     ["Hold Shift for additional options"] = "按住Shift键查看其他选项",
 }

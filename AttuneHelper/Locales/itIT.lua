@@ -21,5 +21,7 @@ return {
     ["Open merchant window to sell these items."]                                 = "Apri la finestra del mercante per vendere questi oggetti.",
     ["Items must be: Mythic, 100% attuned, soulbound, not in sets/ignore lists."] =
     "Gli oggetti devono essere: mitici, sintonizzati al 100%, vincolati, non in set/liste ignorate.",
+    ["Prepare Disenchant Include BoE Mythic Weapons"]                             =
+    "Prepara disincantamento: armi mitiche BoE (livello oggetto 245)",
     ["Hold Shift for additional options"]                                         = "Tieni premuto Shift per opzioni aggiuntive",
 }
