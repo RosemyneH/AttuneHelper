@@ -149,22 +149,22 @@ end
 local function BuildHistorySection(parent)
     local section = CreateFrame("Frame", nil, parent)
     section:SetAllPoints(parent)
-    local panel = CreatePanel(section, 984, 578, "TOPLEFT", section, "TOPLEFT", 0, 0)
+    local panel = CreatePanel(section, 984, 558, "TOPLEFT", section, "TOPLEFT", 0, 0)
     CreateText(panel, "GameFontNormalLarge", "TOPLEFT", panel, "TOPLEFT", 16, -14):SetText("Attune History")
     CreateText(panel, "GameFontNormalSmall", "TOPLEFT", panel, "TOPLEFT", 16, -42, 940, "LEFT"):SetText("Old daily snapshots are archived by day rollover and remain until manually cleared.")
-    local listPanel = CreatePanel(panel, 952, 460, "TOPLEFT", panel, "TOPLEFT", 16, -72)
+    local listPanel = CreatePanel(panel, 952, 434, "TOPLEFT", panel, "TOPLEFT", 16, -72)
     for i = 1, 18 do
         local row = CreateText(listPanel, "GameFontNormalSmall", "TOPLEFT", listPanel, "TOPLEFT", 10, -10 - ((i - 1) * 24), 932, "LEFT")
         ui.historyRows[i] = row
     end
-    CreateButton(panel, 120, 26, "Refresh", "BOTTOMLEFT", panel, "BOTTOMLEFT", 16, 16, RefreshHistoryRows)
-    CreateButton(panel, 160, 26, "Clear History", "LEFT", panel, "LEFT", 144, -273, function()
+    local refreshBtn = CreateButton(panel, 120, 26, "Refresh", "BOTTOMLEFT", panel, "BOTTOMLEFT", 16, 16, RefreshHistoryRows)
+    local clearBtn = CreateButton(panel, 160, 26, "Clear History", "LEFT", refreshBtn, "RIGHT", 12, 0, function()
         if AH.ClearDailyAttuneHistory then
             AH.ClearDailyAttuneHistory()
             RefreshHistoryRows()
         end
     end)
-    CreateButton(panel, 210, 26, "Dump History to Chat", "LEFT", panel, "LEFT", 322, -273, function()
+    CreateButton(panel, 210, 26, "Dump History to Chat", "LEFT", clearBtn, "RIGHT", 12, 0, function()
         local entries = GetHistoryEntries()
         print("|cff00ff00[AttuneHelper]|r Daily Attune History:")
         if #entries == 0 then
