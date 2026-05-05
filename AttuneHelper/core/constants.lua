@@ -4,6 +4,12 @@ local AH = _G.AttuneHelper
 -- Mythic item id threshold (same value used in original file)
 AH.MYTHIC_MIN_ITEMID = 52203
 
+-- Prepare Disenchant: optional BoE mythic melee weapons must match this item level
+AH.PREPARE_DISENCHANT_BOE_MYTHIC_WEAPON_ILVL = 245
+
+AH.FONT_EXPRESSWAY = "Interface\\AddOns\\AttuneHelper\\fonts\\expressway.ttf"
+AH.FONT_OSAN_XBOLD = "Interface\\AddOns\\AttuneHelper\\fonts\\osan-xbold.ttf"
+
 -- System throttle
 AH.CHAT_MSG_SYSTEM_THROTTLE = 0.2
 
