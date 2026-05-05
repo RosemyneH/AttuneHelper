@@ -254,6 +254,87 @@ end
 
 local MANAGED_LIST_SECTION_SCROLL_HEIGHT = 318
 
+local AHSetSlotPickerDropdown = CreateFrame("Frame", "AttuneHelperAHSetSlotPickerDropdown", UIParent, "UIDropDownMenuTemplate")
+AHSetSlotPickerDropdown.displayMode = "MENU"
+AHSetSlotPickerDropdown.entries = {}
+AHSetSlotPickerDropdown.targetSlotName = nil
+
+local function ItemCanAssignToSlot(slotName, itemLink)
+    if not slotName or not itemLink then
+        return false
+    end
+    local _, _, _, _, _, _, _, _, itemEquipLoc = GetItemInfo(itemLink)
+    if not itemEquipLoc or itemEquipLoc == "" then
+        return false
+    end
+    local mapped = AH.itemTypeToUnifiedSlot and AH.itemTypeToUnifiedSlot[itemEquipLoc] or nil
+    local prepMH = AH.AHSET_PREP_MAINHAND_SLOT or "PrepMainHandSlot"
+    local prepOH = AH.AHSET_PREP_OFFHAND_SLOT or "PrepOffHandSlot"
+    if slotName == prepMH then
+        slotName = "MainHandSlot"
+    elseif slotName == prepOH then
+        slotName = "SecondaryHandSlot"
+    end
+    if type(mapped) == "string" then
+        return mapped == slotName
+    end
+    if type(mapped) == "table" then
+        for _, candidate in ipairs(mapped) do
+            if candidate == slotName then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function BuildBagItemsForSlot(slotName)
+    local entries = {}
+    for bag = 0, 4 do
+        local slots = GetContainerNumSlots and GetContainerNumSlots(bag) or 0
+        for bagSlot = 1, slots do
+            local link = GetContainerItemLink and GetContainerItemLink(bag, bagSlot) or nil
+            if link and ItemCanAssignToSlot(slotName, link) then
+                local name, _, quality, _, _, _, _, _, _, icon = GetItemInfo(link)
+                entries[#entries + 1] = {
+                    link = link,
+                    name = name or link,
+                    quality = tonumber(quality) or 1,
+                    icon = icon or "Interface\\Icons\\INV_Misc_QuestionMark",
+                }
+            end
+        end
+    end
+    table.sort(entries, function(a, b)
+        if a.quality ~= b.quality then
+            return a.quality > b.quality
+        end
+        return tostring(a.name):lower() < tostring(b.name):lower()
+    end)
+    return entries
+end
+
+UIDropDownMenu_Initialize(AHSetSlotPickerDropdown, function(self, level)
+    if level ~= 1 then
+        return
+    end
+    for _, entry in ipairs(self.entries or {}) do
+        local info = UIDropDownMenu_CreateInfo()
+        info.text = entry.name
+        info.icon = entry.icon
+        info.notCheckable = true
+        info.func = function()
+            if AH.AssignItemToAHSetPaperdollSlot then
+                AH.AssignItemToAHSetPaperdollSlot(self.targetSlotName, entry.link)
+                if AH.RefreshListManagementPanel then
+                    AH.RefreshListManagementPanel()
+                end
+            end
+        end
+        UIDropDownMenu_AddButton(info, level)
+    end
+end)
+
 local function CreateAHSetPaperdollSlot(parent, slotName, x, y, slotSize)
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(slotSize, slotSize)
@@ -300,19 +381,27 @@ local function CreateAHSetPaperdollSlot(parent, slotName, x, y, slotSize)
 
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     btn:SetScript("OnClick", function(self, button)
-        if button ~= "RightButton" then
+        if button == "RightButton" then
+            local key = self.setKey
+            if key and AHSetList then
+                AHSetList[key] = nil
+                if AH.ForceSaveSettings then
+                    AH.ForceSaveSettings()
+                end
+                if AH.RefreshListManagementPanel then
+                    AH.RefreshListManagementPanel()
+                end
+            end
             return
         end
-        local key = self.setKey
-        if key and AHSetList then
-            AHSetList[key] = nil
-            if AH.ForceSaveSettings then
-                AH.ForceSaveSettings()
-            end
-            if AH.RefreshListManagementPanel then
-                AH.RefreshListManagementPanel()
-            end
+        local entries = BuildBagItemsForSlot(self.slotName)
+        if #entries == 0 then
+            print("|cffffd200[AttuneHelper]|r No bag items match this slot.")
+            return
         end
+        AHSetSlotPickerDropdown.entries = entries
+        AHSetSlotPickerDropdown.targetSlotName = self.slotName
+        ToggleDropDownMenu(1, nil, AHSetSlotPickerDropdown, self, 0, 0)
     end)
 
     btn:SetScript("OnEnter", function(self)
@@ -654,7 +743,7 @@ AH.slots = {
 
 AH.general_options_list_for_checkboxes = {
     {text = "Sell Attuned Mythic Gear?", dbKey = "Sell Attuned Mythic Gear?"},
-    {text = "Auto Equip Attunable After Combat", dbKey = "Auto Equip Attunable After Combat"},
+    {text = "Auto Equip Attunables Automaticly", dbKey = "Auto Equip Attunable After Combat"},
     {text = "Do Not Sell BoE Items", dbKey = "Do Not Sell BoE Items"},
     {text = "Ignore Always-Vendor for Warforged and Lightforged", dbKey = "Ignore Always-Vendor for Warforged and Lightforged"},
 	{text = "Do Not Sell Grey And White Items", dbKey = "Do Not Sell Grey And White Items"},
@@ -721,7 +810,36 @@ function AH.CreateCheckbox(t, p, x, y, iG, dkO)
     txt:SetText(AH.t(t))
     
     cb.dbKey = idK
+    cb.displayText = t
     return cb
+end
+
+local function PrintToggleFeedback(cb, mode)
+    if not cb then
+        return
+    end
+    local settingLabel = cb.displayText or cb.dbKey or cb:GetName() or "Setting"
+    if mode == "blacklist" then
+        print(string.format("|cffffd200[AH]|r %s %s.", settingLabel, cb:GetChecked() and "blacklisted" or "unblacklisted"))
+        return
+    end
+    print(string.format(
+        "|cff00ff00[AttuneHelper]|r %s: %s",
+        AH.t(settingLabel),
+        cb:GetChecked() and "|cff00ff00Enabled|r" or "|cffff0000Disabled|r"
+    ))
+end
+
+local function BindCheckboxToggle(cb, toggleFn, mode)
+    if not cb then
+        return
+    end
+    cb:SetScript("OnClick", function(s)
+        if toggleFn then
+            toggleFn(s)
+        end
+        PrintToggleFeedback(s, mode)
+    end)
 end
 
 function AH.ApplyGeneralOptionTooltip(cb, dbKey)
@@ -819,8 +937,12 @@ _G.CreateCheckbox = AH.CreateCheckbox
 -- Settings save/load functions
 ------------------------------------------------------------------------
 function AH.SaveAllSettings()
-    if not InterfaceOptionsFrame or not InterfaceOptionsFrame:IsShown() then return end
-    
+    if AH._optionsSuspendSave then
+        return
+    end
+    if not AH._optionsLoadedFull then
+        return
+    end
     -- Save blacklist checkboxes
     for _, cb in ipairs(AH.blacklist_checkboxes) do
         if cb and cb:IsShown() then
@@ -857,7 +979,21 @@ function AH.SaveAllSettings()
     end
 end
 
+local function IsEnabledSettingValue(settingValue)
+    if settingValue == true then
+        return true
+    end
+    if settingValue == 1 then
+        return true
+    end
+    if settingValue == "1" then
+        return true
+    end
+    return false
+end
+
 function AH.__loadAllSettingsFull()
+    AH._optionsLoadedFull = false
     AH.InitializeDefaultSettings()
 
     -- Load frame positions (handled in main_frame and mini_frame modules)
@@ -955,7 +1091,7 @@ function AH.__loadAllSettingsFull()
     end
 
     for _, cb in ipairs(AH.general_option_checkboxes) do
-        cb:SetChecked(AttuneHelperDB[cb.dbKey or cb:GetName()] == 1)
+        cb:SetChecked(IsEnabledSettingValue(AttuneHelperDB[cb.dbKey or cb:GetName()]))
     end
 
     -- Load forge affix threshold dropdown
@@ -1009,10 +1145,14 @@ function AH.__loadAllSettingsFull()
     if AH.UpdateDisplayMode then
         AH.UpdateDisplayMode()
     end
+    AH._optionsLoadedFull = true
 end
 
 -- ʕ •ᴥ•ʔ✿ Force save for UI checkboxes (bypasses Interface Options check) ✿ ʕ •ᴥ•ʔ
 function AH.SaveSettingsForced()
+    if AH._optionsSuspendSave then
+        return
+    end
     -- This version saves settings even when Interface Options isn't open
     -- Used by UI checkboxes that need immediate saving
     
@@ -1168,7 +1308,7 @@ function AH.InitializeOptionCheckboxes()
     for _, sN in ipairs(AH.slots) do
         local cb = AH.CreateCheckbox(sN, blacklistPanel, x + 120 * c, y - 33 * r, false, sN)
         table.insert(AH.blacklist_checkboxes, cb)
-        cb:SetScript("OnClick", AH.SaveSettingsForced)
+        BindCheckboxToggle(cb, AH.SaveSettingsForced, "blacklist")
         r = r + 1
         if r == 6 then
             r = 0
@@ -1184,21 +1324,21 @@ function AH.InitializeOptionCheckboxes()
         table.insert(AH.general_option_checkboxes, cb)
         
         if oD.dbKey == "EquipNewAffixesOnly" then
-            cb:SetScript("OnClick", function(s)
+            BindCheckboxToggle(cb, function(s)
                 AH.SaveAllSettings()
                 if AH.UpdateItemCountText then
                     AH.UpdateItemCountText()
                 end
             end)
         elseif oD.dbKey == "Lock AH in Place (Buttons Only Mouse)" then
-            cb:SetScript("OnClick", function()
+            BindCheckboxToggle(cb, function()
                 AH.SaveAllSettings()
                 if AH.ApplyFrameInteractivity then
                     AH.ApplyFrameInteractivity()
                 end
             end)
         else
-            cb:SetScript("OnClick", AH.SaveAllSettings)
+            BindCheckboxToggle(cb, AH.SaveAllSettings)
         end
         gYO = gYO - 33
     end
@@ -1226,7 +1366,7 @@ function AH.InitializeForgeOptionCheckboxes()
         end
         lA = cb
         
-        cb:SetScript("OnClick", AH.SaveSettingsForced)
+        BindCheckboxToggle(cb, AH.SaveSettingsForced)
         
         table.insert(AH.forge_type_checkboxes, cb)
     end
@@ -1239,7 +1379,7 @@ function AH.InitializeForgeOptionCheckboxes()
         true,
         "Disable Auto Equip 284 BoE Forges if Base Attuned"
     )
-    disableBoe284Cb:SetScript("OnClick", AH.SaveSettingsForced)
+    BindCheckboxToggle(disableBoe284Cb, AH.SaveSettingsForced)
     table.insert(AH.general_option_checkboxes, disableBoe284Cb)
 end
 
@@ -1424,7 +1564,14 @@ function AH.InitializeThemeOptions()
     AH.theme_option_controls.buttonThemeDropdown = btDD
     
     UIDropDownMenu_Initialize(btDD, function(s)
-        for _, th in ipairs({"Normal", "Blue", "Grey"}) do
+        local themeNames = {}
+        for th, _ in pairs(AH.themePaths or {}) do
+            table.insert(themeNames, th)
+        end
+        table.sort(themeNames, function(a, b)
+            return tostring(a):lower() < tostring(b):lower()
+        end)
+        for _, th in ipairs(themeNames) do
             local i = UIDropDownMenu_CreateInfo()
             i.text = th
             i.value = th
@@ -1621,21 +1768,21 @@ function AH.CreateGeneralOptionsPanel(mainPanel)
                 affixDDButton:SetScript("OnLeave", GameTooltip_Hide)
             end
 
-            cb:SetScript("OnClick", function(s)
+            BindCheckboxToggle(cb, function(s)
                 AH.SaveSettingsForced()
                 if AH.UpdateItemCountText then
                     AH.UpdateItemCountText()
                 end
             end)
         elseif opt.dbKey == "Lock AH in Place (Buttons Only Mouse)" then
-            cb:SetScript("OnClick", function()
+            BindCheckboxToggle(cb, function()
                 AH.SaveSettingsForced()
                 if AH.ApplyFrameInteractivity then
                     AH.ApplyFrameInteractivity()
                 end
             end)
         else
-            cb:SetScript("OnClick", AH.SaveSettingsForced)
+            BindCheckboxToggle(cb, AH.SaveSettingsForced)
         end
         
         yOffset = yOffset - 25
@@ -1667,7 +1814,7 @@ function AH.CreateBlacklistOptionsPanel(mainPanel)
         table.insert(AH.blacklist_checkboxes, cb)
         
         -- ʕ •ᴥ•ʔ✿ Add click handler for blacklist checkboxes ✿ ʕ •ᴥ•ʔ
-        cb:SetScript("OnClick", AH.SaveSettingsForced)
+        BindCheckboxToggle(cb, AH.SaveSettingsForced, "blacklist")
         
         yOffset = yOffset - 25
         
@@ -2417,7 +2564,7 @@ function AH.CreateForgeOptionsPanel(mainPanel)
         table.insert(AH.forge_type_checkboxes, cb)
         
         -- ʕ •ᴥ•ʔ✿ Add click handler for forge type checkboxes ✿ ʕ •ᴥ•ʔ
-        cb:SetScript("OnClick", AH.SaveSettingsForced)
+        BindCheckboxToggle(cb, AH.SaveSettingsForced)
         
         yOffset = yOffset - 25
     end
@@ -2431,7 +2578,7 @@ function AH.CreateForgeOptionsPanel(mainPanel)
         true,
         "Disable Auto Equip 284 BoE Forges if Base Attuned"
     )
-    disableBoe284Cb:SetScript("OnClick", AH.SaveSettingsForced)
+    BindCheckboxToggle(disableBoe284Cb, AH.SaveSettingsForced)
     table.insert(AH.general_option_checkboxes, disableBoe284Cb)
 
     return forgeOptionsPanel
@@ -2479,8 +2626,8 @@ function AH.CreateWeaponControlsPanel(mainPanel)
     table.insert(AH.weapon_control_checkboxes, mh1hCB)
     table.insert(AH.weapon_control_checkboxes, mh2hCB)
 
-    mh1hCB:SetScript("OnClick", AH.SaveSettingsForced)
-    mh2hCB:SetScript("OnClick", AH.SaveSettingsForced)
+    BindCheckboxToggle(mh1hCB, AH.SaveSettingsForced)
+    BindCheckboxToggle(mh2hCB, AH.SaveSettingsForced)
 
     local ohHeader = weaponPanel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     ohHeader:SetPoint("TOPLEFT", 16, -188)
@@ -2497,10 +2644,10 @@ function AH.CreateWeaponControlsPanel(mainPanel)
     table.insert(AH.weapon_control_checkboxes, ohShieldCB)
     table.insert(AH.weapon_control_checkboxes, ohHoldCB)
 
-    oh1hCB:SetScript("OnClick", AH.SaveSettingsForced)
-    oh2hCB:SetScript("OnClick", AH.SaveSettingsForced)
-    ohShieldCB:SetScript("OnClick", AH.SaveSettingsForced)
-    ohHoldCB:SetScript("OnClick", AH.SaveSettingsForced)
+    BindCheckboxToggle(oh1hCB, AH.SaveSettingsForced)
+    BindCheckboxToggle(oh2hCB, AH.SaveSettingsForced)
+    BindCheckboxToggle(ohShieldCB, AH.SaveSettingsForced)
+    BindCheckboxToggle(ohHoldCB, AH.SaveSettingsForced)
 
     weaponPanel:SetScript("OnShow", function()
         RefreshTitansGripDetectedLabel()

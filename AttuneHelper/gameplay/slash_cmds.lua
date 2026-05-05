@@ -390,9 +390,18 @@ SlashCmdList["AHBL"] = function(m)
         print("|cffff0000[AH]|r Usage: /ahbl <slot_keyword>")
         return
     end
-    AttuneHelperDB[sV] = 1 - (AttuneHelperDB[sV] or 0)
-    print(string.format("|cffffd200[AH]|r %s %s.", sV, (AttuneHelperDB[sV] == 1 and "blacklisted" or "unblacklisted")))
-    AH.ForceSaveSettings()
+    if AH.ToggleSlotBlacklist then
+        AH.ToggleSlotBlacklist(sV)
+    else
+        AttuneHelperDB[sV] = 1 - (AttuneHelperDB[sV] or 0)
+        print(string.format("|cffffd200[AH]|r %s %s.", sV, (AttuneHelperDB[sV] == 1 and "blacklisted" or "unblacklisted")))
+        if SavedVariables then
+            SavedVariables()
+        end
+    end
+    if AH.RefreshStandaloneOptions and _G.AttuneHelperStandaloneOptionsFrame and _G.AttuneHelperStandaloneOptionsFrame:IsShown() then
+        AH.RefreshStandaloneOptions()
+    end
 end
 
 SLASH_AHBLL1 = "/ahbll"
@@ -426,10 +435,12 @@ function AH.SlashCommand(msg)
         print("|cff00ff00[AttuneHelper]|r Available commands:")
         print("  |cffffd200/ah show|r - Show AttuneHelper frame")
         print("  |cffffd200/ah hide|r - Hide AttuneHelper frame")
-        print("  |cffffd200/ah toggle|r - Toggle auto-equip after combat")
+        print("  |cffffd200/ah toggle|r - Toggle Auto Equip Attunables Automaticly")
         print("  |cffffd200/ah togglemini|r - Toggle mini/full mode")
         print("  |cffffd200/ah reset|r - Reset frame positions to center")
+        print("  |cffffd200/ah resetdefaults|r - Reset global options to defaults")
         print("  |cffffd200/ah resetday|r - Reset today's attune snapshot to current server counts")
+        print("  |cffffd200/ah config|settings|options|cfg|opt|r - Open standalone settings")
         print("  |cffffd200/ah savedvars|r - Print SavedVariables table sizes (audit footprint)")
         print("  |cffffd200/ah bag|r - Toggle disenchant target bag (0 or 1)")
         print("  |cffffd200/ah weapons|r - Show weapon control settings")
@@ -453,6 +464,13 @@ function AH.SlashCommand(msg)
         end
         return
     end
+
+    if msg == "config" or msg == "settings" or msg == "options" or msg == "cfg" or msg == "opt" then
+        if AH.OpenSettings then
+            AH.OpenSettings()
+        end
+        return
+    end
     
     if msg == "cleanup" then
         if AH.EnhancedCleanupCaches then
@@ -468,9 +486,9 @@ function AH.SlashCommand(msg)
     end
 
     if msg == "toggle" then
-        -- Toggle auto-equip after combat
+        -- Toggle auto equip attunables automaticly
         AttuneHelperDB["Auto Equip Attunable After Combat"] = 1 - (AttuneHelperDB["Auto Equip Attunable After Combat"] or 0)
-        print("|cff00ff00[AttuneHelper]|r Auto-equip after combat " .. (AttuneHelperDB["Auto Equip Attunable After Combat"] == 1 and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
+        print("|cff00ff00[AttuneHelper]|r Auto Equip Attunables Automaticly " .. (AttuneHelperDB["Auto Equip Attunable After Combat"] == 1 and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
         AH.ForceSaveSettings()
         return
     end
@@ -523,6 +541,9 @@ function AH.SlashCommand(msg)
             return
         end
         AH.ToggleSlotBlacklist(targetSlotName)
+        if AH.RefreshStandaloneOptions and _G.AttuneHelperStandaloneOptionsFrame and _G.AttuneHelperStandaloneOptionsFrame:IsShown() then
+            AH.RefreshStandaloneOptions()
+        end
         return
     end
 
@@ -568,6 +589,40 @@ function AH.SlashCommand(msg)
         
         print("|cffffd200[AH]|r Frame positions reset to center.")
         AH.ForceSaveSettings()
+        return
+    end
+
+    if msg == "resetdefaults" then
+        local keptProfiles = AttuneHelperDB and AttuneHelperDB.CharProfiles or nil
+        local profileCount = 0
+        if type(keptProfiles) == "table" then
+            for _ in pairs(keptProfiles) do
+                profileCount = profileCount + 1
+            end
+        end
+
+        AttuneHelperDB = {}
+        if type(keptProfiles) == "table" then
+            AttuneHelperDB.CharProfiles = keptProfiles
+        end
+
+        if AH.InitializeDefaultSettings then
+            AH.InitializeDefaultSettings()
+        end
+        if AH.LoadAllSettings then
+            AH.LoadAllSettings()
+        end
+        if AH.UpdateDisplayMode then
+            AH.UpdateDisplayMode()
+        end
+        if AH.RefreshStandaloneOptions and _G.AttuneHelperStandaloneOptionsFrame and _G.AttuneHelperStandaloneOptionsFrame:IsShown() then
+            AH.RefreshStandaloneOptions()
+        end
+        if AH.ForceSaveSettings then
+            AH.ForceSaveSettings()
+        end
+
+        print(string.format("|cff00ff00[AttuneHelper]|r Global defaults restored. Preserved %d CharProfiles entries.", profileCount))
         return
     end
 

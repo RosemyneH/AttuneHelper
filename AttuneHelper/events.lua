@@ -296,6 +296,37 @@ local function StoreDailySnapshot(counts, dateKey)
     AttuneHelperDB["DailyAttuneSnapshotLF"] = counts.lightforged
 end
 
+local function GetHistoryTable(createIfMissing)
+    if not AttuneHelperDB then
+        return nil
+    end
+    if type(AttuneHelperDB["DailyAttuneHistory"]) ~= "table" then
+        if not createIfMissing then
+            return nil
+        end
+        AttuneHelperDB["DailyAttuneHistory"] = {}
+    end
+    return AttuneHelperDB["DailyAttuneHistory"]
+end
+
+local function ArchiveDailySnapshot(snapshot)
+    if type(snapshot) ~= "table" or not snapshot.date then
+        return
+    end
+    local history = GetHistoryTable(true)
+    if not history then
+        return
+    end
+    local dateKey = tostring(snapshot.date)
+    history[dateKey] = {
+        date = dateKey,
+        account = tonumber(snapshot.account) or 0,
+        titanforged = tonumber(snapshot.titanforged) or 0,
+        warforged = tonumber(snapshot.warforged) or 0,
+        lightforged = tonumber(snapshot.lightforged) or 0,
+    }
+end
+
 local function ReadDailySnapshot()
     if not AttuneHelperDB then
         return nil
@@ -435,6 +466,10 @@ function AH.EnsureDailyAttuneSnapshotCurrent()
         return true
     end
 
+    if snapshot and snapshot.date and snapshot.date ~= todayKey then
+        ArchiveDailySnapshot(snapshot)
+    end
+
     if AH.pendingDailySnapshotCapture then
         return false
     end
@@ -517,6 +552,39 @@ function AH.GetTodaysAttuneBreakdown()
         warforged = math.max(0, currentCounts.warforged - snapshot.warforged),
         lightforged = math.max(0, currentCounts.lightforged - snapshot.lightforged)
     }
+end
+
+function AH.GetDailyAttuneHistory()
+    local history = GetHistoryTable(false)
+    local entries = {}
+    if not history then
+        return entries
+    end
+    for _, entry in pairs(history) do
+        if type(entry) == "table" then
+            table.insert(entries, {
+                date = tostring(entry.date or ""),
+                account = tonumber(entry.account) or 0,
+                titanforged = tonumber(entry.titanforged) or 0,
+                warforged = tonumber(entry.warforged) or 0,
+                lightforged = tonumber(entry.lightforged) or 0,
+            })
+        end
+    end
+    table.sort(entries, function(a, b)
+        return tostring(a.date) > tostring(b.date)
+    end)
+    return entries
+end
+
+function AH.ClearDailyAttuneHistory()
+    if not AttuneHelperDB then
+        return
+    end
+    AttuneHelperDB["DailyAttuneHistory"] = {}
+    if AH.ForceSaveSettings then
+        AH.ForceSaveSettings()
+    end
 end
 
 local function ScheduleAttuneSnapshotRetry(retriesLeft, delay)

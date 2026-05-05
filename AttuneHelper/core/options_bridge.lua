@@ -21,23 +21,14 @@ function AH.OpenAttuneHelperSettingsCategory()
         print("|cffff0000[AttuneHelper]|r Could not load AttuneHelper_Options (enable it in the AddOns list).")
         return
     end
-    if AH.InitializeAllOptions then
-        AH.InitializeAllOptions()
+    if AH.ShowStandaloneOptions then
+        AH.ShowStandaloneOptions()
+        return
     end
     if AH.LoadAllSettings then
         AH.LoadAllSettings()
     end
-    if InterfaceOptionsFrame_Show then
-        InterfaceOptionsFrame_Show()
-    end
-    local generalPanel = AH.UI and AH.UI.optionsPanels and AH.UI.optionsPanels.general
-    if InterfaceOptionsFrame_OpenToCategory then
-        if generalPanel then
-            InterfaceOptionsFrame_OpenToCategory(generalPanel)
-        else
-            InterfaceOptionsFrame_OpenToCategory("General Logic - AttuneHelper")
-        end
-    end
+    print("|cffff0000[AttuneHelper]|r Standalone settings UI failed to initialize.")
 end
 
 AH.OpenSettings = AH.OpenAttuneHelperSettingsCategory

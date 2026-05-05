@@ -1598,10 +1598,10 @@ function AH.SetupMainButtonHandlers()
 
     -- ʕ •ᴥ•ʔ✿ Open Settings Button - opens Attune Helper settings ✿ ʕ •ᴥ•ʔ
     AH.UI.buttons.openSettings:SetScript("OnClick", function()
-        if AH.OpenAttuneHelperSettingsCategory then
+        if AH.OpenSettings then
+            AH.OpenSettings()
+        elseif AH.OpenAttuneHelperSettingsCategory then
             AH.OpenAttuneHelperSettingsCategory()
-        elseif InterfaceOptionsFrame_OpenToCategory then
-            InterfaceOptionsFrame_OpenToCategory("General Logic - AttuneHelper")
         end
     end)
 

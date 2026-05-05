@@ -2125,7 +2125,7 @@ end
 ------------------------------------------------------------------------
 function AH.ToggleAutoEquip()
     AttuneHelperDB["Auto Equip Attunable After Combat"] = 1 - (AttuneHelperDB["Auto Equip Attunable After Combat"] or 0)
-    print("|cffffd200[AH]|r Auto-Equip After Combat: " ..
+    print("|cffffd200[AH]|r Auto Equip Attunables Automaticly: " ..
         (AttuneHelperDB["Auto Equip Attunable After Combat"] == 1 and "|cff00ff00Enabled|r." or "|cffff0000Disabled|r."))
 end
 

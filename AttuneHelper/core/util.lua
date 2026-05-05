@@ -1234,7 +1234,7 @@ function AH.InitializeDefaultSettings()
     end
     AttuneHelperDB["EquipUntouchedVariants"] = nil
 
-    if AttuneHelperDB["EquipNewAffixesOnly"] == nil then AttuneHelperDB["EquipNewAffixesOnly"] = 0 end
+    if AttuneHelperDB["EquipNewAffixesOnly"] == nil then AttuneHelperDB["EquipNewAffixesOnly"] = 1 end
     if AttuneHelperDB["AHSet Enable 1H Swap for OH Attune"] == nil then AttuneHelperDB["AHSet Enable 1H Swap for OH Attune"] = 0 end
     if AttuneHelperDB["AHSet OH Attune Trigger"] == nil then AttuneHelperDB["AHSet OH Attune Trigger"] = 1 end
 
@@ -1438,12 +1438,12 @@ function AH.GetWeaponControlSetting(settingName)
         if p.weapon[settingName] ~= nil then
             return p.weapon[settingName]
         end
+        if AttuneHelperDB and AttuneHelperDB[settingName] ~= nil then
+            p.weapon[settingName] = AttuneHelperDB[settingName]
+            return p.weapon[settingName]
+        end
     end
 
-    AHCharSettings = AHCharSettings or {}
-    if AHCharSettings[settingName] ~= nil then
-        return AHCharSettings[settingName]
-    end
     if AttuneHelperDB and AttuneHelperDB[settingName] ~= nil then
         return AttuneHelperDB[settingName]
     end
@@ -1465,12 +1465,16 @@ function AH.SetWeaponControlSetting(settingName, value)
     if not settingName then
         return
     end
+
+    local normalizedValue = (value == 1 or value == true or value == "1") and 1 or 0
     if AH.GetCharProfile then
         local p = AH.GetCharProfile()
-        p.weapon[settingName] = value
+        p.weapon[settingName] = normalizedValue
+    elseif AttuneHelperDB then
+        AttuneHelperDB[settingName] = normalizedValue
     end
     AHCharSettings = AHCharSettings or {}
-    AHCharSettings[settingName] = value
+    AHCharSettings[settingName] = normalizedValue
 end
 _G.SetWeaponControlSetting = AH.SetWeaponControlSetting
 
@@ -1486,8 +1490,9 @@ function AH.ToggleSlotBlacklist(slotName)
     local status = (AttuneHelperDB[slotName] == 1) and "blacklisted" or "unblacklisted"
     print(string.format("|cffffd200[AH]|r %s %s.", slotName, status))
     
-    -- Force save the setting
-    AH.ForceSaveSettings()
+    if SavedVariables then
+        SavedVariables()
+    end
 end
 _G.ToggleSlotBlacklist = AH.ToggleSlotBlacklist
 
