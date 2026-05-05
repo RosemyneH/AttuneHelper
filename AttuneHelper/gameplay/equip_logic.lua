@@ -2,6 +2,8 @@
 local AH = _G.AttuneHelper
 local flags = AH.flags or {}
 
+AH.prepareDisenchantInProgress = false
+
 AH.synastriaDataReady = (GetCustomGameData(41, 0) ~= 0)
 
 -- ʕ •ᴥ•ʔ✿ Recently equipped items tracking to prevent immediate re-equipping ✿ ʕ •ᴥ•ʔ
@@ -1519,6 +1521,19 @@ function AH.SortInventoryItems()
     disenchantSafetyTooltipHideToken = (disenchantSafetyTooltipHideToken or 0) + 1
     HideDisenchantSafetyTooltip()
 
+    if AH.prepareDisenchantInProgress then
+        print("|cffff0000[Attune Helper]|r Prepare Disenchant is already running; wait for it to finish.")
+        return
+    end
+
+    local function ResolvePrepareDisenchantItemName(itemId, itemLink)
+        local n = AH.GetItemDisplayName(itemId, itemLink)
+        if not n and itemLink then
+            n = string.match(itemLink, "%[(.+)%]")
+        end
+        return n
+    end
+
     -- ʕ •ᴥ•ʔ✿ Determine target bag based on user preference ✿ ʕ •ᴥ•ʔ
     local targetBag = (AttuneHelperDB["Use Bag 1 for Disenchant"] == 1) and 1 or 0
     local targetBagName = "bag " .. targetBag
@@ -1560,6 +1575,13 @@ function AH.SortInventoryItems()
         end
     end
 
+    local function IsPrepareDisenchantMeleeWeaponEquipLoc(equipLoc)
+        return equipLoc == "INVTYPE_WEAPON"
+            or equipLoc == "INVTYPE_2HWEAPON"
+            or equipLoc == "INVTYPE_WEAPONMAINHAND"
+            or equipLoc == "INVTYPE_WEAPONOFFHAND"
+    end
+
     -- Enhanced function to check if item is ready for disenchanting
     local function IsReadyForDisenchant(itemId, itemLink, itemName, bag, slot)
         if not itemId or not itemLink or not itemName then
@@ -1588,24 +1610,17 @@ function AH.SortInventoryItems()
             return false, "In AHSet list"
         end
 
-        -- Check 5: Must be soulbound
         local isSoulbound = AH.IsSoulboundFromNativeBagSlot(bag, slot)
-        if not isSoulbound then
-            return false, "Not soulbound"
-        end
 
-        -- Check 6: Must be 100% attuned
         local progress = 0
         if _G.GetItemLinkAttuneProgress then
             local progressResult = GetItemLinkAttuneProgress(itemLink)
             if type(progressResult) == "number" then
                 progress = progressResult
             else
-
                 return false, "Cannot determine attunement progress"
             end
         else
-            --AH.print_debug_general("IsReadyForDisenchant: GetItemLinkAttuneProgress API not available for " .. itemLink)
             return false, "Attunement API not available"
         end
 
@@ -1613,7 +1628,30 @@ function AH.SortInventoryItems()
             return false, "Not fully attuned (" .. progress .. "%)"
         end
 
-        return true, "Ready for disenchant"
+        if isSoulbound then
+            return true, "Ready for disenchant"
+        end
+
+        if (AttuneHelperDB["Prepare Disenchant Include BoE Mythic Weapons"] or 0) ~= 1 then
+            return false, "Not soulbound"
+        end
+
+        local attunableBySomeoneFn = _G.IsAttunableBySomeone
+        if not attunableBySomeoneFn or not attunableBySomeoneFn(itemId) then
+            return false, "BoE disenchant weapons option: not attunable by someone"
+        end
+
+        local _, _, _, ilvl, _, _, _, _, equipLoc = GetItemInfo(itemId)
+        local reqIlvl = AH.PREPARE_DISENCHANT_BOE_MYTHIC_WEAPON_ILVL
+        if not ilvl or ilvl ~= reqIlvl then
+            return false, "BoE disenchant weapons option: requires ilvl " .. tostring(reqIlvl)
+        end
+
+        if not IsPrepareDisenchantMeleeWeaponEquipLoc(equipLoc) then
+            return false, "BoE disenchant weapons option: not MH/OH melee weapon type"
+        end
+
+        return true, "Ready for disenchant (BoE mythic weapon ilvl " .. tostring(reqIlvl) .. ")"
     end
 
     local function IsAttunableButNotReady(itemId, itemLink, itemName, bag, slot)
@@ -1652,7 +1690,7 @@ function AH.SortInventoryItems()
             local id = GetContainerItemID(b, s)
             if id then
                 local link = GetContainerItemLink(b, s)
-                local name = GetItemInfo(id)
+                local name = ResolvePrepareDisenchantItemName(id, link)
 
                 if link and name then
                     local isReady, reason = IsReadyForDisenchant(id, link, name, b, s)
@@ -1738,110 +1776,160 @@ function AH.SortInventoryItems()
             targetBagName .. " slots: " .. table.concat(availableTargetSlots, ", "))
     end
 
-    -- Function to safely move items
-    local function MoveItem(fromBag, fromSlot, toBag, toSlot)
-        if GetContainerItemID(fromBag, fromSlot) then
-            PickupContainerItem(fromBag, fromSlot)
-            if GetContainerItemID(toBag, toSlot) then
-                -- Target slot has item, need to swap
-                PickupContainerItem(toBag, toSlot)
-                PickupContainerItem(fromBag, fromSlot)
-            else
-                -- Target slot is empty
-                PickupContainerItem(toBag, toSlot)
-            end
+    -- ʕ •ᴥ•ʔ✿ WoW applies one reliable cursor move per tick; pace like vendor sell ✿ ʕ •ᴥ•ʔ
+    local PREPARE_DE_MOVE_DELAY = 0.08
+
+    local function MovePrepareDisenchantItem(fromBag, fromSlot, toBag, toSlot)
+        if CursorHasItem() then
+            ClearCursor()
         end
+        if not GetContainerItemID(fromBag, fromSlot) then
+            return false
+        end
+        PickupContainerItem(fromBag, fromSlot)
+        if not CursorHasItem() then
+            return false
+        end
+        if GetContainerItemID(toBag, toSlot) then
+            PickupContainerItem(toBag, toSlot)
+            PickupContainerItem(fromBag, fromSlot)
+        else
+            PickupContainerItem(toBag, toSlot)
+        end
+        if CursorHasItem() then
+            ClearCursor()
+            return false
+        end
+        return true
     end
 
-    -- Step 1: Move non-disenchant-ready items out of target bag to make room
-    local nonReadyMoved = 0
+    local moves = {}
     for s = 1, GetContainerNumSlots(targetBag) do
         local id = GetContainerItemID(targetBag, s)
         if id then
             local link = GetContainerItemLink(targetBag, s)
-            local name = GetItemInfo(id)
-
+            local name = ResolvePrepareDisenchantItemName(id, link)
             if link and name then
                 local isReady, reason = IsReadyForDisenchant(id, link, name, targetBag, s)
                 if not isReady and #emptySlots > 0 then
                     local target = table.remove(emptySlots)
                     if target then
-                        MoveItem(targetBag, s, target.b, target.s)
-                        nonReadyMoved = nonReadyMoved + 1
-                        print("|cffffd200[Attune Helper]|r Moved non-disenchant item from " ..
-                            targetBagName .. ": " .. name .. " (" .. reason .. ")")
+                        moves[#moves + 1] = {
+                            kind = "evac",
+                            name = name,
+                            reason = reason,
+                            fb = targetBag,
+                            fs = s,
+                            tb = target.b,
+                            ts = target.s
+                        }
                     end
                 end
             end
         end
     end
 
-    -- Step 2: Move disenchant-ready items to target bag
-    local disenchantItemsMoved = 0
     local slotIndex = 1
-
     for _, item in ipairs(readyForDisenchant) do
         if not item.alreadyInTarget and slotIndex <= #availableTargetSlots then
             local targetSlot = availableTargetSlots[slotIndex]
-            MoveItem(item.b, item.s, targetBag, targetSlot)
-            disenchantItemsMoved = disenchantItemsMoved + 1
-            print("|cffffd200[Attune Helper]|r Moved disenchant-ready item to " ..
-                targetBagName .. " slot " .. targetSlot .. ": " ..
-                item.name .. (item.fromBank and " (from bank)" or ""))
+            moves[#moves + 1] = {
+                kind = "fill",
+                item = item,
+                tb = targetBag,
+                ts = targetSlot
+            }
             slotIndex = slotIndex + 1
         elseif not item.alreadyInTarget then
             print("|cffff0000[Attune Helper]|r No more available slots in " .. targetBagName .. " for: " .. item.name)
         end
     end
 
-    print("|cffffd200[Attune Helper]|r Prepare Disenchant complete. Moved " .. disenchantItemsMoved ..
-        " disenchant-ready items to " ..
-        targetBagName ..
-        (nonReadyMoved > 0 and ", moved " .. nonReadyMoved .. " other items out of " .. targetBagName or "") .. ".")
+    local nonReadyMoved = 0
+    local disenchantItemsMoved = 0
+    local moveIdx = 0
 
-    if disenchantItemsMoved == 0 and #readyForDisenchant == 0 then
-        print(
-            "|cffffd200[Attune Helper]|r No items found that are 100% attuned, soulbound, mythic, and not in ignore/set lists.")
-    end
+    local function FinalizePrepareDisenchant()
+        print("|cffffd200[Attune Helper]|r Prepare Disenchant complete. Moved " .. disenchantItemsMoved ..
+            " disenchant-ready items to " ..
+            targetBagName ..
+            (nonReadyMoved > 0 and ", moved " .. nonReadyMoved .. " other items out of " .. targetBagName or "") .. ".")
 
-    local attunableWarnings = {}
-    local tooltipItems = {}
-    for s = 1, GetContainerNumSlots(targetBag) do
-        local id = GetContainerItemID(targetBag, s)
-        if id then
-            local link = GetContainerItemLink(targetBag, s)
-            local name = GetItemInfo(id)
-            if link and name then
-                local isReady, reason = IsReadyForDisenchant(id, link, name, targetBag, s)
-                local isAttunable = AH.IsItemAttunable and AH.IsItemAttunable(link) or false
+        if disenchantItemsMoved == 0 and #readyForDisenchant == 0 then
+            print("|cffffd200[Attune Helper]|r No items found that are mythic, 100% attuned, not in ignore/set lists," ..
+                " and soulbound (or, when enabled, qualifying BoE mythic melee weapons ilvl " ..
+                tostring(AH.PREPARE_DISENCHANT_BOE_MYTHIC_WEAPON_ILVL) .. ").")
+        end
 
-                if not isReady and isAttunable then
-                    table.insert(tooltipItems, {
-                        b = targetBag,
-                        s = s,
-                        id = id,
-                        name = name,
-                        link = link,
-                        isUnsafe = true,
-                        isAttunable = true,
-                        reason = reason
-                    })
-                    table.insert(attunableWarnings, targetBagName .. " slot " .. s .. ": " .. name)
+        local attunableWarnings = {}
+        local tooltipItems = {}
+        for s = 1, GetContainerNumSlots(targetBag) do
+            local id = GetContainerItemID(targetBag, s)
+            if id then
+                local link = GetContainerItemLink(targetBag, s)
+                local name = ResolvePrepareDisenchantItemName(id, link)
+                if link and name then
+                    local isReady, reason = IsReadyForDisenchant(id, link, name, targetBag, s)
+                    local isAttunable = AH.IsItemAttunable and AH.IsItemAttunable(link) or false
+
+                    if not isReady and isAttunable then
+                        table.insert(tooltipItems, {
+                            b = targetBag,
+                            s = s,
+                            id = id,
+                            name = name,
+                            link = link,
+                            isUnsafe = true,
+                            isAttunable = true,
+                            reason = reason
+                        })
+                        table.insert(attunableWarnings, targetBagName .. " slot " .. s .. ": " .. name)
+                    end
                 end
             end
         end
+
+        if #attunableWarnings > 0 then
+            print("|cffff0000[Attune Helper]|r ATTUNABLE ITEMS IN DISENCHANT BAG WARNING")
+            for _, warningLine in ipairs(attunableWarnings) do
+                print("|cffff0000[Attune Helper]|r " .. warningLine)
+            end
+            ShowDisenchantSafetyTooltip(
+                tooltipItems,
+                AH.t("Disenchant Bag Safety"),
+                "Unsafe disenchant items detected in the target bag."
+            )
+        end
     end
 
-    if #attunableWarnings > 0 then
-        print("|cffff0000[Attune Helper]|r ATTUNABLE ITEMS IN DISENCHANT BAG WARNING")
-        for _, warningLine in ipairs(attunableWarnings) do
-            print("|cffff0000[Attune Helper]|r " .. warningLine)
+    local function RunNextPrepareDisenchantMove()
+        moveIdx = moveIdx + 1
+        local m = moves[moveIdx]
+        if not m then
+            AH.prepareDisenchantInProgress = false
+            FinalizePrepareDisenchant()
+            return
         end
-        ShowDisenchantSafetyTooltip(
-            tooltipItems,
-            AH.t("Disenchant Bag Safety"),
-            "Unsafe disenchant items detected in the target bag."
-        )
+        if m.kind == "evac" then
+            if MovePrepareDisenchantItem(m.fb, m.fs, m.tb, m.ts) then
+                nonReadyMoved = nonReadyMoved + 1
+                print("|cffffd200[Attune Helper]|r Moved non-disenchant item from " ..
+                    targetBagName .. ": " .. m.name .. " (" .. m.reason .. ")")
+            end
+        elseif MovePrepareDisenchantItem(m.item.b, m.item.s, m.tb, m.ts) then
+            disenchantItemsMoved = disenchantItemsMoved + 1
+            print("|cffffd200[Attune Helper]|r Moved disenchant-ready item to " ..
+                targetBagName .. " slot " .. m.ts .. ": " ..
+                m.item.name .. (m.item.fromBank and " (from bank)" or ""))
+        end
+        AH.Wait(PREPARE_DE_MOVE_DELAY, RunNextPrepareDisenchantMove)
+    end
+
+    if #moves == 0 then
+        FinalizePrepareDisenchant()
+    else
+        AH.prepareDisenchantInProgress = true
+        RunNextPrepareDisenchantMove()
     end
 end
 
