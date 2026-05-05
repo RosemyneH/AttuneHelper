@@ -548,7 +548,7 @@ function AH.CreateButton(name, parentFrame, text, relativeFrame, point, x, y, wi
 
     local fo = b:GetFontString()
     if fo then
-        fo:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+        fo:SetFont(AH.FONT_EXPRESSWAY, 10, "OUTLINE")
     end
 
     b:SetBackdropColor(0, 0, 0, 0.5)
