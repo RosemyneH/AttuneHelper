@@ -6,7 +6,6 @@ local ui = {
     content = nil,
     tabs = {},
     sections = {},
-    historyRows = {},
     currentTab = nil,
 }
 
@@ -27,11 +26,13 @@ local BLUE_THEME = {
     panelBorder = { 0.22, 0.48, 0.82, 0.95 },
     shellBg = { 0.02, 0.04, 0.10, 0.97 },
     contentBg = { 0.05, 0.09, 0.18, 0.96 },
-    title = { 1, 1, 1.0 },
+    title = { 1, 1, 1 },
     subtitle = { 0.68, 0.78, 0.94 },
     tabActive = { 0.62, 0.84, 1.0 },
     tabInactive = { 0.78, 0.83, 0.92 },
 }
+
+local OPTIONS_UI_VERSION = GetAddOnMetadata("AttuneHelper_Options", "Version") or GetAddOnMetadata("AttuneHelper", "Version") or ""
 
 local function CreatePanel(parent, width, height, point, relativeTo, relativePoint, x, y)
     local frame = CreateFrame("Frame", nil, parent)
@@ -64,28 +65,6 @@ local function CreateButton(parent, width, height, label, point, relativeTo, rel
     button.text:SetTextColor(unpack(BLUE_THEME.tabInactive))
     button:SetScript("OnMouseUp", function() if onClick then onClick() end end)
     return button
-end
-
-local function GetHistoryEntries()
-    if AH.GetDailyAttuneHistory then
-        return AH.GetDailyAttuneHistory()
-    end
-    return {}
-end
-
-local function RefreshHistoryRows()
-    local entries = GetHistoryEntries()
-    for i = 1, #ui.historyRows do
-        local row = ui.historyRows[i]
-        local entry = entries[i]
-        if entry then
-            row:SetText(string.format("%s  Account:%d  TF:%d  WF:%d  LF:%d", tostring(entry.date), tonumber(entry.account) or 0, tonumber(entry.titanforged) or 0, tonumber(entry.warforged) or 0, tonumber(entry.lightforged) or 0))
-            row:Show()
-        else
-            row:SetText("")
-            row:Hide()
-        end
-    end
 end
 
 local function AttachLegacyPanels()
@@ -141,41 +120,17 @@ local function SelectTab(tabKey)
             end)
         end
     end
-    if tabKey == "history" then
-        RefreshHistoryRows()
+    if tabKey == "history" and AH.RefreshAttuneHistoryDashboard then
+        AH.RefreshAttuneHistoryDashboard()
     end
 end
 
 local function BuildHistorySection(parent)
     local section = CreateFrame("Frame", nil, parent)
     section:SetAllPoints(parent)
-    local panel = CreatePanel(section, 984, 558, "TOPLEFT", section, "TOPLEFT", 0, 0)
-    CreateText(panel, "GameFontNormalLarge", "TOPLEFT", panel, "TOPLEFT", 16, -14):SetText("Attune History")
-    CreateText(panel, "GameFontNormalSmall", "TOPLEFT", panel, "TOPLEFT", 16, -42, 940, "LEFT"):SetText("Old daily snapshots are archived by day rollover and remain until manually cleared.")
-    local listPanel = CreatePanel(panel, 952, 434, "TOPLEFT", panel, "TOPLEFT", 16, -72)
-    for i = 1, 18 do
-        local row = CreateText(listPanel, "GameFontNormalSmall", "TOPLEFT", listPanel, "TOPLEFT", 10, -10 - ((i - 1) * 24), 932, "LEFT")
-        ui.historyRows[i] = row
+    if AH.BuildAttuneHistoryDashboard then
+        AH.BuildAttuneHistoryDashboard(section)
     end
-    local refreshBtn = CreateButton(panel, 120, 26, "Refresh", "BOTTOMLEFT", panel, "BOTTOMLEFT", 16, 16, RefreshHistoryRows)
-    local clearBtn = CreateButton(panel, 160, 26, "Clear History", "LEFT", refreshBtn, "RIGHT", 12, 0, function()
-        if AH.ClearDailyAttuneHistory then
-            AH.ClearDailyAttuneHistory()
-            RefreshHistoryRows()
-        end
-    end)
-    CreateButton(panel, 210, 26, "Dump History to Chat", "LEFT", clearBtn, "RIGHT", 12, 0, function()
-        local entries = GetHistoryEntries()
-        print("|cff00ff00[AttuneHelper]|r Daily Attune History:")
-        if #entries == 0 then
-            print("  (no history entries)")
-            return
-        end
-        for i = 1, #entries do
-            local entry = entries[i]
-            print(string.format("  %s | A:%d TF:%d WF:%d LF:%d", tostring(entry.date), tonumber(entry.account) or 0, tonumber(entry.titanforged) or 0, tonumber(entry.warforged) or 0, tonumber(entry.lightforged) or 0))
-        end
-    end)
     return section
 end
 
@@ -197,10 +152,14 @@ local function BuildStandaloneFrame()
     ui.frame = frame
 
     local title = CreateText(frame, "GameFontHighlightLarge", "TOP", frame, "TOP", 0, -18, 980, "CENTER")
+    title:SetFont(AH.FONT_OSAN_XBOLD, 22, "OUTLINE")
     title:SetText("AttuneHelper Control Center")
     title:SetTextColor(unpack(BLUE_THEME.title))
     local subtitle = CreateText(frame, "GameFontNormalSmall", "TOP", title, "BOTTOM", 0, -8, 980, "CENTER")
-    subtitle:SetText("Standalone configuration preserving all previous options categories.")
+    subtitle:SetText(string.format(
+        "Forge AttuneHelper to match your march—presets, ignore lists, forge picks, themes, layouts, and your daily attune chronicles, marshaled in one war-room. Version %s.",
+        OPTIONS_UI_VERSION ~= "" and OPTIONS_UI_VERSION or "?"
+    ))
     subtitle:SetTextColor(unpack(BLUE_THEME.subtitle))
     CreateButton(frame, 28, 24, "X", "TOPRIGHT", frame, "TOPRIGHT", -14, -10, function() frame:Hide() end)
 
@@ -241,7 +200,9 @@ function AH.RefreshStandaloneOptions()
     if AH.LoadAllSettings then
         AH.LoadAllSettings()
     end
-    RefreshHistoryRows()
+    if AH.RefreshAttuneHistoryDashboard then
+        AH.RefreshAttuneHistoryDashboard()
+    end
 end
 
 function AH.ShowStandaloneOptions()
