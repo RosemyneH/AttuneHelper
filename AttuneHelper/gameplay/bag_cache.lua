@@ -160,8 +160,9 @@ function AH.UpdateBagCache(bagID)
                         canPlayerAttune = (CanAttuneItemHelper(itemID) == 1)
                     end
 
-                    local idKey = itemID and (name .. "|" .. tostring(itemID)) or name
-                    local inSet = (AHSetList and (AHSetList[idKey] ~= nil or AHSetList[name] ~= nil))
+                    local idKey = itemID and AH.CreateItemIdentifier(link, name, bagID, slotID) or name
+                    local legacyKey = itemID and (name .. "|" .. tostring(itemID)) or name
+                    local inSet = (AHSetList and (AHSetList[idKey] ~= nil or AHSetList[legacyKey] ~= nil or AHSetList[name] ~= nil))
 
                     if canPlayerAttune or inSet then
                         -- ʕ •ᴥ•ʔ✿ Cache stable per-rec fields so hot loops don't

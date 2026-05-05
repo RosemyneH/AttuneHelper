@@ -190,7 +190,7 @@ function AH.CreateMainFrame()
         itemCountText:SetParent(frame)
     end
     itemCountText:SetPoint("BOTTOM", 0, 6)
-    itemCountText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
+    itemCountText:SetFont(AH.FONT_EXPRESSWAY, 12, "OUTLINE")
     itemCountText:SetTextColor(1, 1, 1, 1)
     itemCountText:SetText("Attunables in Inventory: 0")
 

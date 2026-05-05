@@ -154,7 +154,8 @@ SlashCmdList["AHSET"] = function(msg)
         finger1="Finger0Slot", finger2="Finger1Slot", ring1="Finger0Slot", ring2="Finger1Slot",
         trinket1="Trinket0Slot", trinket2="Trinket1Slot", mh="MainHandSlot", mainhand="MainHandSlot",
         ranged="RangedSlot",
-        prepmh = "PrepMainHandSlot", prepoh = "PrepOffHandSlot"
+        prepmh = "PrepMainHandSlot", prepoh = "PrepOffHandSlot",
+        prep1h = "PrepMainHandSlot"
     }
     local allInventorySlots = {
         "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot",
@@ -186,6 +187,7 @@ SlashCmdList["AHSET"] = function(msg)
 
     if not itemLinkPart or itemLinkPart == "" then
         print("|cffff0000[AttuneHelper]|r Usage: /ahset <itemlink> [mh|oh|SlotName|remove]  |  /ahset 1hspecial2h [remove] (warrior MC 1H/2H preset flag)")
+        print("|cffffd200[AttuneHelper]|r " .. (AH.t and AH.t("AHSet usage signature reminder") or "Unique items: put them in your bags before /ahset so instance signatures can be saved when Custom_GetItemGuid is available."))
         return
     end
 
@@ -194,7 +196,9 @@ SlashCmdList["AHSET"] = function(msg)
         print("|cffff0000[AttuneHelper]|r Invalid item link provided.")
         return
     end
-    local identifier = AH.CreateItemIdentifier(itemLinkPart, itemName)
+    local bag, slot = AH.FindFirstNativeBagSlotForItemLink(itemLinkPart)
+    local identifier = AH.CreateItemIdentifier(itemLinkPart, itemName, bag, slot)
+    local legacyId = AH.GetLegacyItemIdentifier(itemLinkPart, itemName)
 
     local processedSlotArg = slotArg:lower()
 
@@ -202,9 +206,8 @@ SlashCmdList["AHSET"] = function(msg)
         if AH.EnsureAHSetListTable then
             AH.EnsureAHSetListTable()
         end
-        if AHSetList[identifier] or AHSetList[itemName] then
-            AHSetList[identifier] = nil
-            AHSetList[itemName] = nil -- Legacy key cleanup
+        if AHSetList[identifier] or (legacyId and AHSetList[legacyId]) or AHSetList[itemName] then
+            AH.WipeAHSetKeysForItemIdentity(itemLinkPart, itemName, identifier)
             print("|cffffd200[AttuneHelper]|r '" .. itemName .. "' removed from AHSet.")
             for i = 0, 4 do
                 AH.UpdateBagCache(i)
@@ -274,9 +277,11 @@ SlashCmdList["AHSET"] = function(msg)
         AH.EnsureAHSetListTable()
     end
 
-    if AHSetList[identifier] == targetSlotName or AHSetList[itemName] == targetSlotName then
-        AHSetList[identifier] = nil
-        AHSetList[itemName] = nil -- Legacy key cleanup
+    local designated = AHSetList[identifier]
+        or (legacyId and AHSetList[legacyId])
+        or AHSetList[itemName]
+    if designated == targetSlotName then
+        AH.WipeAHSetKeysForItemIdentity(itemLinkPart, itemName, identifier)
         print("|cffffd200[AttuneHelper]|r '" .. itemName .. "' removed from AHSet for slot " .. targetSlotName .. ".")
         for i = 0, 4 do
             AH.UpdateBagCache(i)
@@ -292,7 +297,7 @@ SlashCmdList["AHSET"] = function(msg)
             AH.RefreshListManagementPanel()
         end
     elseif AH.AssignItemToAHSetSlot then
-        AH.AssignItemToAHSetSlot(identifier, itemName, targetSlotName)
+        AH.AssignItemToAHSetSlot(identifier, itemName, targetSlotName, itemLinkPart)
     else
         AHSetList[identifier] = nil
         AHSetList[itemName] = nil
@@ -385,9 +390,18 @@ SlashCmdList["AHBL"] = function(m)
         print("|cffff0000[AH]|r Usage: /ahbl <slot_keyword>")
         return
     end
-    AttuneHelperDB[sV] = 1 - (AttuneHelperDB[sV] or 0)
-    print(string.format("|cffffd200[AH]|r %s %s.", sV, (AttuneHelperDB[sV] == 1 and "blacklisted" or "unblacklisted")))
-    AH.ForceSaveSettings()
+    if AH.ToggleSlotBlacklist then
+        AH.ToggleSlotBlacklist(sV)
+    else
+        AttuneHelperDB[sV] = 1 - (AttuneHelperDB[sV] or 0)
+        print(string.format("|cffffd200[AH]|r %s %s.", sV, (AttuneHelperDB[sV] == 1 and "blacklisted" or "unblacklisted")))
+        if SavedVariables then
+            SavedVariables()
+        end
+    end
+    if AH.RefreshStandaloneOptions and _G.AttuneHelperStandaloneOptionsFrame and _G.AttuneHelperStandaloneOptionsFrame:IsShown() then
+        AH.RefreshStandaloneOptions()
+    end
 end
 
 SLASH_AHBLL1 = "/ahbll"
@@ -421,10 +435,13 @@ function AH.SlashCommand(msg)
         print("|cff00ff00[AttuneHelper]|r Available commands:")
         print("  |cffffd200/ah show|r - Show AttuneHelper frame")
         print("  |cffffd200/ah hide|r - Hide AttuneHelper frame")
-        print("  |cffffd200/ah toggle|r - Toggle auto-equip after combat")
+        print("  |cffffd200/ah toggle|r - Toggle Auto Equip Attunables Automaticly")
         print("  |cffffd200/ah togglemini|r - Toggle mini/full mode")
         print("  |cffffd200/ah reset|r - Reset frame positions to center")
+        print("  |cffffd200/ah resetdefaults|r - Reset global options to defaults")
         print("  |cffffd200/ah resetday|r - Reset today's attune snapshot to current server counts")
+        print("  |cffffd200/ah testoldday account:tf:wf:lf:YYYY-MM-DD|r - Import / overwrite one archived daily history row")
+        print("  |cffffd200/ah config|settings|options|cfg|opt|r - Open standalone settings")
         print("  |cffffd200/ah savedvars|r - Print SavedVariables table sizes (audit footprint)")
         print("  |cffffd200/ah bag|r - Toggle disenchant target bag (0 or 1)")
         print("  |cffffd200/ah weapons|r - Show weapon control settings")
@@ -448,6 +465,13 @@ function AH.SlashCommand(msg)
         end
         return
     end
+
+    if msg == "config" or msg == "settings" or msg == "options" or msg == "cfg" or msg == "opt" then
+        if AH.OpenSettings then
+            AH.OpenSettings()
+        end
+        return
+    end
     
     if msg == "cleanup" then
         if AH.EnhancedCleanupCaches then
@@ -463,9 +487,9 @@ function AH.SlashCommand(msg)
     end
 
     if msg == "toggle" then
-        -- Toggle auto-equip after combat
+        -- Toggle auto equip attunables automaticly
         AttuneHelperDB["Auto Equip Attunable After Combat"] = 1 - (AttuneHelperDB["Auto Equip Attunable After Combat"] or 0)
-        print("|cff00ff00[AttuneHelper]|r Auto-equip after combat " .. (AttuneHelperDB["Auto Equip Attunable After Combat"] == 1 and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
+        print("|cff00ff00[AttuneHelper]|r Auto Equip Attunables Automaticly " .. (AttuneHelperDB["Auto Equip Attunable After Combat"] == 1 and "|cff00ff00enabled|r" or "|cffff0000disabled|r"))
         AH.ForceSaveSettings()
         return
     end
@@ -518,6 +542,9 @@ function AH.SlashCommand(msg)
             return
         end
         AH.ToggleSlotBlacklist(targetSlotName)
+        if AH.RefreshStandaloneOptions and _G.AttuneHelperStandaloneOptionsFrame and _G.AttuneHelperStandaloneOptionsFrame:IsShown() then
+            AH.RefreshStandaloneOptions()
+        end
         return
     end
 
@@ -566,6 +593,40 @@ function AH.SlashCommand(msg)
         return
     end
 
+    if msg == "resetdefaults" then
+        local keptProfiles = AttuneHelperDB and AttuneHelperDB.CharProfiles or nil
+        local profileCount = 0
+        if type(keptProfiles) == "table" then
+            for _ in pairs(keptProfiles) do
+                profileCount = profileCount + 1
+            end
+        end
+
+        AttuneHelperDB = {}
+        if type(keptProfiles) == "table" then
+            AttuneHelperDB.CharProfiles = keptProfiles
+        end
+
+        if AH.InitializeDefaultSettings then
+            AH.InitializeDefaultSettings()
+        end
+        if AH.LoadAllSettings then
+            AH.LoadAllSettings()
+        end
+        if AH.UpdateDisplayMode then
+            AH.UpdateDisplayMode()
+        end
+        if AH.RefreshStandaloneOptions and _G.AttuneHelperStandaloneOptionsFrame and _G.AttuneHelperStandaloneOptionsFrame:IsShown() then
+            AH.RefreshStandaloneOptions()
+        end
+        if AH.ForceSaveSettings then
+            AH.ForceSaveSettings()
+        end
+
+        print(string.format("|cff00ff00[AttuneHelper]|r Global defaults restored. Preserved %d CharProfiles entries.", profileCount))
+        return
+    end
+
     -- ʕ •ᴥ•ʔ✿ Weapon type control commands ✿ ʕ •ᴥ•ʔ
     if msg == "resetday" then
         local ok = AH.ResetDailyAttuneSnapshot and AH.ResetDailyAttuneSnapshot()
@@ -576,6 +637,29 @@ function AH.SlashCommand(msg)
             end
         else
             print("|cffffd200[AttuneHelper]|r Daily snapshot reset is waiting for stable server counts.")
+        end
+        return
+    end
+
+    if msg == "testoldday" or msg:match("^testoldday%s+") then
+        local ac, tf, wf, lf, dkey = msg:match("^testoldday%s+(%d+):(%d+):(%d+):(%d+):(.+)$")
+        if not ac then
+            print("|cffff0000[AttuneHelper]|r Usage: |cffffd200/ah testoldday account:tf:wf:lf:YYYY-MM-DD|r")
+            print("|cffffd200Example:|r /ah testoldday 11557:2462:440:89:2026-05-05")
+            return
+        end
+        dkey = (dkey or ""):match("^%s*(.-)%s*$") or ""
+        if AH.ImportDailyAttuneHistoryEntry then
+            local ok, err = AH.ImportDailyAttuneHistoryEntry(ac, tf, wf, lf, dkey)
+            if ok then
+                print(string.format("|cff00ff00[AttuneHelper]|r Imported history |cffffd200%s|r (A:%s TF:%s WF:%s LF:%s).",
+                    dkey, tostring(ac), tostring(tf), tostring(wf), tostring(lf)))
+                if AH.RefreshStandaloneOptions and _G.AttuneHelperStandaloneOptionsFrame and _G.AttuneHelperStandaloneOptionsFrame:IsShown() then
+                    AH.RefreshStandaloneOptions()
+                end
+            else
+                print("|cffff0000[AttuneHelper]|r Import failed: " .. tostring(err or "?"))
+            end
         end
         return
     end

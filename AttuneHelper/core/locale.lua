@@ -41,8 +41,17 @@ local enUS = {
     ["Open merchant window to sell these items."]                                     = "Open merchant window to sell these items.",
     ["Drag an item here or pick it up and click to toggle always-vendor."]            = "Drag an item here or pick it up and click to toggle always-vendor.",
     ["Items added here are always included in AH vendor previews and selling."]        = "Items added here are always included in AH vendor previews and selling.",
+    ["Hold left 1s on this button for bulk add mode (cursor items add-only)."]         = "Hold left 1s on this button for bulk add mode (cursor items add-only).",
+    ["Bulk mode: click this button again or close the vendor to exit."]               = "Bulk mode: click this button again or close the vendor to exit.",
+    ["Bulk add mode is ON."]                                                          = "Bulk add mode is ON.",
+    ["Always-vendor skipped for Warforged/Lightforged (see options)."]                = "Always-vendor skipped for Warforged/Lightforged (see options).",
+    ["Ignore Always-Vendor for Warforged and Lightforged"]                            = "Ignore Always-Vendor for Warforged and Lightforged",
+    ["When enabled, Warforged and Lightforged variants cannot be added to the always-vendor list and do not use the always-vendor bypass when selling."] =
+    "When enabled, Warforged and Lightforged variants cannot be added to the always-vendor list and do not use the always-vendor bypass when selling.",
     ["Items must be: Mythic, 100% attuned, soulbound, not in sets/ignore lists."]     =
     "Items must be: Mythic, 100% attuned, soulbound, not in sets/ignore lists.",
+    ["Prepare Disenchant Include BoE Mythic Weapons"]                                  =
+    "Prepare Disenchant: BoE Mythic weapons (ilvl 245)",
     ["Update AHSet"]                                                                  = "Update AHSet",
     ["Sets AHSet to be equal to your currently equiped items."]                       =
     "Sets AHSet to be equal to your currently equiped items.",
@@ -77,7 +86,11 @@ local enUS = {
     ["AHSet prep paper strip drag hint"] = "Prep Weapons",
     ["AHSet prep MH slot label"] = "1H · main-hand row",
     ["AHSet prep OH slot label"] = "Off-hand row",
-    ["AHSet prep slot empty slash hint"] = "Set AHSet, /ahset prepmh, or /ahset prepoh also works.",
+    ["AHSet prep slot empty slash hint"] = "Set AHSet, /ahset prepmh, /ahset prep1h, or /ahset prepoh also works.",
+    ["AHSet keep item in bags for instance signature"] =
+    "Keep the item in your bags when adding it to AHSet so its unique signature can be saved. If you only have one copy, an equipped link alone may not capture it.",
+    ["AHSet usage signature reminder"] =
+    "Unique items: put them in your bags before /ahset so instance signatures can be saved when Custom_GetItemGuid is available.",
     ["AHSet 2h swap strip explanation"] =
     "Nothing here is a separate toggle: Equip All uses your weapon mappings on this preset. Map a one-hander to Main Hand or the squares below when the preset main hand is a two-hander.",
     ["AHSet auto status swap on"] = "1H prep swap path: active for this preset.",

@@ -18,5 +18,7 @@ return {
     ["Open merchant window to sell these items."] = "상인 창을 열어 이 아이템을 판매하세요.",
     ["Items must be: Mythic, 100% attuned, soulbound, not in sets/ignore lists."] =
     "아이템 조건: 신화, 100% 조율, 귀속, 세트/제외 목록에 없음.",
+    ["Prepare Disenchant Include BoE Mythic Weapons"] =
+    "마력 추출 준비: 거래 가능 신화 무기 BoE (아이템 레벨 245)",
     ["Hold Shift for additional options"] = "추가 옵션을 보려면 Shift를 누르고 계세요",
 }

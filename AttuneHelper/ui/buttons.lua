@@ -548,7 +548,7 @@ function AH.CreateButton(name, parentFrame, text, relativeFrame, point, x, y, wi
 
     local fo = b:GetFontString()
     if fo then
-        fo:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+        fo:SetFont(AH.FONT_EXPRESSWAY, 10, "OUTLINE")
     end
 
     b:SetBackdropColor(0, 0, 0, 0.5)
@@ -667,7 +667,70 @@ local function SetAddToVendorTooltip(button, tooltipAnchor)
 
     GameTooltip:AddLine(AH.t("Drag an item here or pick it up and click to toggle always-vendor."), 1, 1, 1, true)
     GameTooltip:AddLine(AH.t("Items added here are always included in AH vendor previews and selling."), 0.7, 0.9, 1, true)
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine(AH.t("Hold left 1s on this button for bulk add mode (cursor items add-only)."), 0.75, 1, 0.85, true)
+    GameTooltip:AddLine(AH.t("Bulk mode: click this button again or close the vendor to exit."), 0.65, 0.9, 1, true)
+    if _G.AttuneHelperAddVendorToggle then
+        GameTooltip:AddLine(AH.t("Bulk add mode is ON."), 1, 0.85, 0.2, true)
+    end
     GameTooltip:Show()
+end
+
+local function EnsureAddToVendorToggleOutline(button)
+    if not button then
+        return
+    end
+    local ring = button.AHAddVendorToggleOutline
+    if not ring then
+        ring = CreateFrame("Frame", nil, button)
+        ring:SetFrameStrata("HIGH")
+        ring:SetFrameLevel((button:GetFrameLevel() or 0) + 20)
+        ring:SetAllPoints(button)
+        local t = ring:CreateTexture(nil, "OVERLAY")
+        t:SetTexture("Interface\\Buttons\\WHITE8X8")
+        t:SetVertexColor(1, 0.82, 0.15, 0.95)
+        t:SetBlendMode("ADD")
+        t:SetPoint("TOPLEFT", ring, "TOPLEFT", 0, 0)
+        t:SetPoint("TOPRIGHT", ring, "TOPRIGHT", 0, 0)
+        t:SetHeight(2)
+        ring.AHTop = t
+        t = ring:CreateTexture(nil, "OVERLAY")
+        t:SetTexture("Interface\\Buttons\\WHITE8X8")
+        t:SetVertexColor(1, 0.82, 0.15, 0.95)
+        t:SetBlendMode("ADD")
+        t:SetPoint("BOTTOMLEFT", ring, "BOTTOMLEFT", 0, 0)
+        t:SetPoint("BOTTOMRIGHT", ring, "BOTTOMRIGHT", 0, 0)
+        t:SetHeight(2)
+        ring.AHBottom = t
+        t = ring:CreateTexture(nil, "OVERLAY")
+        t:SetTexture("Interface\\Buttons\\WHITE8X8")
+        t:SetVertexColor(1, 0.82, 0.15, 0.95)
+        t:SetBlendMode("ADD")
+        t:SetPoint("TOPLEFT", ring, "TOPLEFT", 0, -2)
+        t:SetPoint("BOTTOMLEFT", ring, "BOTTOMLEFT", 0, 2)
+        t:SetWidth(2)
+        ring.AHLeft = t
+        t = ring:CreateTexture(nil, "OVERLAY")
+        t:SetTexture("Interface\\Buttons\\WHITE8X8")
+        t:SetVertexColor(1, 0.82, 0.15, 0.95)
+        t:SetBlendMode("ADD")
+        t:SetPoint("TOPRIGHT", ring, "TOPRIGHT", 0, -2)
+        t:SetPoint("BOTTOMRIGHT", ring, "BOTTOMRIGHT", 0, 2)
+        t:SetWidth(2)
+        ring.AHRight = t
+        button.AHAddVendorToggleOutline = ring
+    end
+    local on = _G.AttuneHelperAddVendorToggle == true
+    if on then
+        ring:Show()
+    else
+        ring:Hide()
+    end
+end
+
+function AH.RefreshAddVendorToggleOutline()
+    EnsureAddToVendorToggleOutline(_G.AttuneHelperMerchantAddToVendorButton)
+    EnsureAddToVendorToggleOutline(_G.AttuneHelperScootsAddToVendorButton)
 end
 
 local function GetForgeBadgeColorCode(forgeShortName)
@@ -862,20 +925,64 @@ function AH.ApplyAddToVendorButtonBehavior(button, tooltipAnchor)
     end
 
     button:RegisterForClicks("LeftButtonUp")
+    button:SetScript("OnMouseDown", function(self, btn)
+        if btn ~= "LeftButton" then
+            return
+        end
+        if not (AH.IsVendorWindowOpen and AH.IsVendorWindowOpen()) then
+            return
+        end
+        self._ahAddVendorHoldPending = true
+        AH._addVendorHoldSeq = (AH._addVendorHoldSeq or 0) + 1
+        local token = AH._addVendorHoldSeq
+        AH.Wait(1, function()
+            if AH._addVendorHoldSeq ~= token then
+                return
+            end
+            if not self._ahAddVendorHoldPending then
+                return
+            end
+            if AH.SetAddVendorToggleMode then
+                AH.SetAddVendorToggleMode(true)
+            end
+            AH._suppressNextAddVendorClick = true
+        end)
+    end)
+    button:SetScript("OnMouseUp", function(self, btn)
+        if btn ~= "LeftButton" then
+            return
+        end
+        self._ahAddVendorHoldPending = false
+        AH._addVendorHoldSeq = (AH._addVendorHoldSeq or 0) + 1
+    end)
     button:SetScript("OnClick", function()
+        if AH._suppressNextAddVendorClick then
+            AH._suppressNextAddVendorClick = false
+            return
+        end
+        if _G.AttuneHelperAddVendorToggle and AH.SetAddVendorToggleMode then
+            AH.SetAddVendorToggleMode(false)
+            return
+        end
         if AH.AddCursorItemToAlwaysVendor then
             AH.AddCursorItemToAlwaysVendor()
         end
     end)
     button:SetScript("OnReceiveDrag", function()
-        if AH.AddCursorItemToAlwaysVendor then
+        if _G.AttuneHelperAddVendorToggle and AH.AddCursorItemToAlwaysVendorAddOnly then
+            AH.AddCursorItemToAlwaysVendorAddOnly()
+        elseif AH.AddCursorItemToAlwaysVendor then
             AH.AddCursorItemToAlwaysVendor()
         end
     end)
     button:SetScript("OnEnter", function(self)
         SetAddToVendorTooltip(self, tooltipAnchor)
     end)
-    button:SetScript("OnLeave", GameTooltip_Hide)
+    button:SetScript("OnLeave", function(self)
+        self._ahAddVendorHoldPending = false
+        AH._addVendorHoldSeq = (AH._addVendorHoldSeq or 0) + 1
+        GameTooltip_Hide()
+    end)
 end
 
 local function ApplyCompatMicroButtonStyle(button, iconPath, styleVariant)
@@ -982,6 +1089,9 @@ function AH.EnsureScootsVendorHooks()
         end
     end)
     master:HookScript("OnHide", function()
+        if AH.SetAddVendorToggleMode then
+            AH.SetAddVendorToggleMode(false)
+        end
         if _G.AttuneHelperScootsVendorButton then
             _G.AttuneHelperScootsVendorButton:Hide()
         end
@@ -1089,6 +1199,10 @@ function AH.RefreshVendorCompatButtons()
         if scootsTodaysAttunesText then
             scootsTodaysAttunesText:Hide()
         end
+    end
+
+    if AH.RefreshAddVendorToggleOutline then
+        AH.RefreshAddVendorToggleOutline()
     end
 end
 
@@ -1484,10 +1598,10 @@ function AH.SetupMainButtonHandlers()
 
     -- ʕ •ᴥ•ʔ✿ Open Settings Button - opens Attune Helper settings ✿ ʕ •ᴥ•ʔ
     AH.UI.buttons.openSettings:SetScript("OnClick", function()
-        if AH.OpenAttuneHelperSettingsCategory then
+        if AH.OpenSettings then
+            AH.OpenSettings()
+        elseif AH.OpenAttuneHelperSettingsCategory then
             AH.OpenAttuneHelperSettingsCategory()
-        elseif InterfaceOptionsFrame_OpenToCategory then
-            InterfaceOptionsFrame_OpenToCategory("General Logic - AttuneHelper")
         end
     end)
 

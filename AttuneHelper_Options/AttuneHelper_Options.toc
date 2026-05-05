@@ -3,6 +3,8 @@
 ## Notes: Load-on-demand Interface Options UI for AttuneHelper
 ## Dependencies: AttuneHelper
 ## LoadOnDemand: 1
-## Version: 1.8.0
+## Version: 1.8.1
 
 options_panels.lua
+history_chart.lua
+standalone_config.lua

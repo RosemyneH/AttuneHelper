@@ -20,6 +20,8 @@ return {
     ["Open merchant window to sell these items."]                                     = "Abre la ventana del vendedor para vender estos objetos.",
     ["Items must be: Mythic, 100% attuned, soulbound, not in sets/ignore lists."]     =
     "Los objetos deben ser míticos y estar: 100% sincronizados, ligados, fuera de conjuntos/listas de ignorados.",
+    ["Prepare Disenchant Include BoE Mythic Weapons"]                                 =
+    "Preparar desencantar: armas míticas BoE (nivel de objeto 245)",
     ["Update AHSet"]                                                                  = "Sobreescribir AHSet",
     ["Sets AHSet to be equal to your currently equiped items."]                       = "Sobreescribe AHSet con tus obejtos equipados.",
     ["This will delete your current AHSet."]                                          = "Esto borrará el AHSet actual.",

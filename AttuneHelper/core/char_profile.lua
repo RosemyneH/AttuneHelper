@@ -2,9 +2,82 @@
 local AH = _G.AttuneHelper
 
 local DEFAULT_PRESET = "Default"
+local UNKNOWN_GUID = "unknown"
+local WEAPON_CONTROL_DEFAULTS = {
+    ["Allow MainHand 1H Weapons"] = 1,
+    ["Allow MainHand 2H Weapons"] = 1,
+    ["Allow OffHand 1H Weapons"] = 1,
+    ["Allow OffHand 2H Weapons"] = 0,
+    ["Allow OffHand Shields"] = 1,
+    ["Allow OffHand Holdables"] = 1,
+}
+
+local function isKnownGuid(guid)
+    return type(guid) == "string" and guid ~= "" and guid ~= UNKNOWN_GUID
+end
+
+local function isZeroLike(value)
+    return value == 0 or value == "0" or value == false
+end
+
+local function repairLegacyAllZeroWeaponProfile(profile)
+    if type(profile) ~= "table" or type(profile.weapon) ~= "table" then
+        return false
+    end
+
+    local hasAnyWeaponKeys = false
+    local allZero = true
+    for settingName, _ in pairs(WEAPON_CONTROL_DEFAULTS) do
+        local currentValue = profile.weapon[settingName]
+        if currentValue ~= nil then
+            hasAnyWeaponKeys = true
+        else
+            allZero = false
+            break
+        end
+        if not isZeroLike(currentValue) then
+            allZero = false
+            break
+        end
+    end
+
+    if not hasAnyWeaponKeys or not allZero then
+        return false
+    end
+
+    local hasTopLevelSignal = false
+    for settingName, _ in pairs(WEAPON_CONTROL_DEFAULTS) do
+        local topLevelValue = AttuneHelperDB and AttuneHelperDB[settingName]
+        if topLevelValue ~= nil and not isZeroLike(topLevelValue) then
+            hasTopLevelSignal = true
+            break
+        end
+    end
+    if not hasTopLevelSignal then
+        return false
+    end
+
+    for settingName, defaultValue in pairs(WEAPON_CONTROL_DEFAULTS) do
+        local topLevelValue = AttuneHelperDB and AttuneHelperDB[settingName]
+        if topLevelValue ~= nil then
+            profile.weapon[settingName] = topLevelValue
+        else
+            profile.weapon[settingName] = defaultValue
+        end
+    end
+    return true
+end
 
 function AH.GetActivePlayerGUID()
-    return UnitGUID("player") or "unknown"
+    local guid = UnitGUID("player")
+    if isKnownGuid(guid) then
+        AH._lastKnownPlayerGUID = guid
+        return guid
+    end
+    if isKnownGuid(AH._lastKnownPlayerGUID) then
+        return AH._lastKnownPlayerGUID
+    end
+    return UNKNOWN_GUID
 end
 
 local function defaultCharProfile()
@@ -78,7 +151,36 @@ function AH.MigrateLegacyCharDataIfNeeded()
             t[k] = v
         end
     end
-    if type(AHCharSettings) == "table" then
+    local function shouldImportLegacyWeaponSettings(legacySettings)
+        if type(legacySettings) ~= "table" then
+            return false
+        end
+
+        local expectedKeyCount = 0
+        local zeroCount = 0
+        for settingName, _ in pairs(WEAPON_CONTROL_DEFAULTS) do
+            expectedKeyCount = expectedKeyCount + 1
+            local value = legacySettings[settingName]
+            if value == nil then
+                return true
+            end
+            if value == 0 or value == "0" then
+                zeroCount = zeroCount + 1
+            end
+        end
+
+        if zeroCount == expectedKeyCount then
+            for keyName, _ in pairs(legacySettings) do
+                if WEAPON_CONTROL_DEFAULTS[keyName] == nil then
+                    return true
+                end
+            end
+            return false
+        end
+        return true
+    end
+
+    if shouldImportLegacyWeaponSettings(AHCharSettings) then
         for k, v in pairs(AHCharSettings) do
             if p.weapon[k] == nil then
                 p.weapon[k] = v
@@ -90,16 +192,8 @@ function AH.MigrateLegacyCharDataIfNeeded()
 end
 
 local function applyWeaponDefaults()
-    local weaponControlDefaults = {
-        ["Allow MainHand 1H Weapons"] = 1,
-        ["Allow MainHand 2H Weapons"] = 1,
-        ["Allow OffHand 1H Weapons"] = 1,
-        ["Allow OffHand 2H Weapons"] = 0,
-        ["Allow OffHand Shields"] = 1,
-        ["Allow OffHand Holdables"] = 1,
-    }
     local p = AH.GetCharProfile()
-    for settingName, defaultValue in pairs(weaponControlDefaults) do
+    for settingName, defaultValue in pairs(WEAPON_CONTROL_DEFAULTS) do
         if p.weapon[settingName] == nil then
             if AttuneHelperDB[settingName] ~= nil then
                 p.weapon[settingName] = AttuneHelperDB[settingName]
@@ -116,8 +210,15 @@ end
 
 function AH.InitCharProfileAfterLoad()
     AH.EnsureCharProfilesRoot()
-    AH.GetCharProfile()
+    local root = AH.EnsureCharProfilesRoot()
+    local activeGuid = AH.GetActivePlayerGUID()
+    if isKnownGuid(activeGuid) and root[UNKNOWN_GUID] and not root[activeGuid] then
+        root[activeGuid] = root[UNKNOWN_GUID]
+        root[UNKNOWN_GUID] = nil
+    end
+    local profile = AH.GetCharProfile()
     AH.MigrateLegacyCharDataIfNeeded()
+    repairLegacyAllZeroWeaponProfile(profile)
     applyWeaponDefaults()
     AH.BindAHSetListToActivePreset()
 end
