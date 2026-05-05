@@ -577,6 +577,65 @@ function AH.GetDailyAttuneHistory()
     return entries
 end
 
+function AH.GetDailyAttuneHistorySeries()
+    local reversed = AH.GetDailyAttuneHistory()
+    local asc = {}
+    for i = #reversed, 1, -1 do
+        asc[#asc + 1] = reversed[i]
+    end
+
+    local todayKey = date("%Y-%m-%d")
+    local snap = AH.GetDailyAttuneSnapshot and AH.GetDailyAttuneSnapshot() or nil
+    local cur = AH.GetCurrentAttuneCounts and AH.GetCurrentAttuneCounts() or nil
+    if snap and cur and snap.date == todayKey then
+        local last = asc[#asc]
+        if not last or tostring(last.date) ~= todayKey then
+            asc[#asc + 1] = {
+                date = todayKey,
+                account = tonumber(cur.account) or 0,
+                titanforged = tonumber(cur.titanforged) or 0,
+                warforged = tonumber(cur.warforged) or 0,
+                lightforged = tonumber(cur.lightforged) or 0,
+                tooltipTotals = {
+                    account = tonumber(snap.account) or 0,
+                    titanforged = tonumber(snap.titanforged) or 0,
+                    warforged = tonumber(snap.warforged) or 0,
+                    lightforged = tonumber(snap.lightforged) or 0,
+                },
+            }
+        end
+    end
+
+    local series = {}
+    for i = 1, #asc do
+        local row = asc[i]
+        local prev = asc[i - 1]
+        local dAccount, dTitanforged, dWarforged, dLightforged
+        if prev then
+            dAccount = (tonumber(row.account) or 0) - (tonumber(prev.account) or 0)
+            dTitanforged = (tonumber(row.titanforged) or 0) - (tonumber(prev.titanforged) or 0)
+            dWarforged = (tonumber(row.warforged) or 0) - (tonumber(prev.warforged) or 0)
+            dLightforged = (tonumber(row.lightforged) or 0) - (tonumber(prev.lightforged) or 0)
+        end
+        local entry = {
+            date = tostring(row.date or ""),
+            account = tonumber(row.account) or 0,
+            titanforged = tonumber(row.titanforged) or 0,
+            warforged = tonumber(row.warforged) or 0,
+            lightforged = tonumber(row.lightforged) or 0,
+            dAccount = dAccount,
+            dTitanforged = dTitanforged,
+            dWarforged = dWarforged,
+            dLightforged = dLightforged,
+        }
+        if row.tooltipTotals then
+            entry.tooltipTotals = row.tooltipTotals
+        end
+        series[#series + 1] = entry
+    end
+    return series
+end
+
 function AH.ClearDailyAttuneHistory()
     if not AttuneHelperDB then
         return
@@ -585,6 +644,38 @@ function AH.ClearDailyAttuneHistory()
     if AH.ForceSaveSettings then
         AH.ForceSaveSettings()
     end
+end
+
+function AH.ImportDailyAttuneHistoryEntry(account, titanforged, warforged, lightforged, dateKey)
+    if not AttuneHelperDB then
+        return false, "database not ready"
+    end
+    dateKey = tostring(dateKey or ""):match("^%s*(.-)%s*$") or ""
+    if dateKey == "" then
+        return false, "empty date"
+    end
+    if not dateKey:match("^%d%d%d%d%-%d%d%-%d%d$") then
+        return false, "date must be YYYY-MM-DD"
+    end
+
+    local history = GetHistoryTable(true)
+    if not history then
+        return false, "could not open history table"
+    end
+
+    history[dateKey] = {
+        date = dateKey,
+        account = math.max(0, tonumber(account) or 0),
+        titanforged = math.max(0, tonumber(titanforged) or 0),
+        warforged = math.max(0, tonumber(warforged) or 0),
+        lightforged = math.max(0, tonumber(lightforged) or 0),
+    }
+
+    if AH.ForceSaveSettings then
+        AH.ForceSaveSettings()
+    end
+
+    return true
 end
 
 local function ScheduleAttuneSnapshotRetry(retriesLeft, delay)
