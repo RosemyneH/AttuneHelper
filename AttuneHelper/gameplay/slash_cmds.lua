@@ -440,6 +440,7 @@ function AH.SlashCommand(msg)
         print("  |cffffd200/ah reset|r - Reset frame positions to center")
         print("  |cffffd200/ah resetdefaults|r - Reset global options to defaults")
         print("  |cffffd200/ah resetday|r - Reset today's attune snapshot to current server counts")
+        print("  |cffffd200/ah testoldday account:tf:wf:lf:YYYY-MM-DD|r - Import / overwrite one archived daily history row")
         print("  |cffffd200/ah config|settings|options|cfg|opt|r - Open standalone settings")
         print("  |cffffd200/ah savedvars|r - Print SavedVariables table sizes (audit footprint)")
         print("  |cffffd200/ah bag|r - Toggle disenchant target bag (0 or 1)")
@@ -636,6 +637,29 @@ function AH.SlashCommand(msg)
             end
         else
             print("|cffffd200[AttuneHelper]|r Daily snapshot reset is waiting for stable server counts.")
+        end
+        return
+    end
+
+    if msg == "testoldday" or msg:match("^testoldday%s+") then
+        local ac, tf, wf, lf, dkey = msg:match("^testoldday%s+(%d+):(%d+):(%d+):(%d+):(.+)$")
+        if not ac then
+            print("|cffff0000[AttuneHelper]|r Usage: |cffffd200/ah testoldday account:tf:wf:lf:YYYY-MM-DD|r")
+            print("|cffffd200Example:|r /ah testoldday 11557:2462:440:89:2026-05-05")
+            return
+        end
+        dkey = (dkey or ""):match("^%s*(.-)%s*$") or ""
+        if AH.ImportDailyAttuneHistoryEntry then
+            local ok, err = AH.ImportDailyAttuneHistoryEntry(ac, tf, wf, lf, dkey)
+            if ok then
+                print(string.format("|cff00ff00[AttuneHelper]|r Imported history |cffffd200%s|r (A:%s TF:%s WF:%s LF:%s).",
+                    dkey, tostring(ac), tostring(tf), tostring(wf), tostring(lf)))
+                if AH.RefreshStandaloneOptions and _G.AttuneHelperStandaloneOptionsFrame and _G.AttuneHelperStandaloneOptionsFrame:IsShown() then
+                    AH.RefreshStandaloneOptions()
+                end
+            else
+                print("|cffff0000[AttuneHelper]|r Import failed: " .. tostring(err or "?"))
+            end
         end
         return
     end
