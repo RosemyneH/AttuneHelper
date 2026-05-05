@@ -598,7 +598,11 @@ function AH.SellQualifiedItemsFromDialog(itemsToSellFromDialog)
             end
             if not stoppedEarly and #itemsToSellFromDialog > maxSellCount then
                 local remainingCount = #itemsToSellFromDialog - maxSellCount
-                DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffffd200[Attune Helper]|r Vendor safeguard: stopped at %d items to prevent packet disconnects. %d item(s) remain; click again to continue.", maxSellCount, remainingCount))
+                if limitSelling then
+                    DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffffd200[Attune Helper]|r Sell pass limited to %d item(s) by your setting. %d item(s) remain; click again to continue.", maxSellCount, remainingCount))
+                else
+                    DEFAULT_CHAT_FRAME:AddMessage(string.format("|cffffd200[Attune Helper]|r Vendor safeguard: stopped at %d items to prevent packet disconnects. %d item(s) remain; click again to continue.", maxSellCount, remainingCount))
+                end
             end
         elseif not stoppedEarly then
             DEFAULT_CHAT_FRAME:AddMessage("|cffffd200[Attune Helper]|r No items were actually sold.")
@@ -674,12 +678,21 @@ function AH.VendorAttunedItems(buttonSelf)
         return
     end
 
+    local limitSelling = (AttuneHelperDB["Limit Selling to 12 Items?"] == 1)
+    local itemsToSellThisPass = itemsToSell
+    if limitSelling and #itemsToSell > 12 then
+        itemsToSellThisPass = {}
+        for i = 1, 12 do
+            itemsToSellThisPass[i] = itemsToSell[i]
+        end
+    end
+
     if AttuneHelperDB["EnableVendorSellConfirmationDialog"] == 1 then
         local confirmText = "|cffffd200The following items will be sold:|r\n\n"
         local itemCountInPopup = 0
         local previewLimit = 10
         local overflowItems = {}
-        for i, itemData in ipairs(itemsToSell) do
+        for i, itemData in ipairs(itemsToSellThisPass) do
             if i <= previewLimit then -- Limit items shown in popup
                 local _, _, _, _, _, _, _, _, _, itemTexture = GetItemInfo(itemData.link)
                 if (not itemTexture) and itemData.bag and itemData.slot then
@@ -699,17 +712,20 @@ function AH.VendorAttunedItems(buttonSelf)
         if #overflowItems > 0 then
             confirmText = confirmText .. "\n|cffcccccc...and " .. #overflowItems .. " more items (hover Sell to preview).|r"
         end
+        if limitSelling and #itemsToSell > #itemsToSellThisPass then
+            confirmText = confirmText .. "\n|cff80c0ff(12-item sell limit is enabled for this pass.)|r"
+        end
         confirmText = confirmText .. "\n\nAre you sure you want to sell these items?"
         StaticPopup_Show("AH_VENDOR_CONFIRM", confirmText, nil, {
-            itemsToSell = itemsToSell,
+            itemsToSell = itemsToSellThisPass,
             overflowItems = overflowItems,
             overflowCount = #overflowItems
         })
-        --AH.print_debug_vendor_preview("VendorAttunedItems: Showing confirmation dialog for " .. #itemsToSell .. " items.")
+        --AH.print_debug_vendor_preview("VendorAttunedItems: Showing confirmation dialog for " .. #itemsToSellThisPass .. " items.")
     else
         -- Sell directly without confirmation
         --AH.print_debug_vendor_preview("VendorAttunedItems: Selling directly, confirmation dialog disabled.")
-        AH.SellQualifiedItemsFromDialog(itemsToSell)
+        AH.SellQualifiedItemsFromDialog(itemsToSellThisPass)
     end
 end
 _G.VendorAttunedItems = AH.VendorAttunedItems
