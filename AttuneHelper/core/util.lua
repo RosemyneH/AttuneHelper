@@ -2,30 +2,226 @@
 local AH = _G.AttuneHelper
 local flags = AH.flags or {}
 
-function AH.CreateItemIdentifier(itemLink, itemName)
-    if not itemLink then return itemName end
-    
+function AH.CompressItemGuidSignature(lo, hi)
+    if lo == nil or hi == nil then
+        return nil
+    end
+    local b = bit
+    if b and b.band then
+        lo = b.band(lo, 0xffffffff)
+        hi = b.band(hi, 0xffffffff)
+    end
+    return string.format("g%x_%x", lo, hi)
+end
+
+function AH.GetItemGuidPairFromNativeBagSlot(nativeBag, nativeSlot)
+    local cg = _G.Custom_GetItemGuid
+    if type(cg) ~= "function" then
+        return nil, nil
+    end
+    local serverBag, serverSlot = AH.NativeToServerBagSlot(nativeBag, nativeSlot)
+    if not serverBag then
+        return nil, nil
+    end
+    local ok, lo, hi = pcall(cg, serverBag, serverSlot)
+    if not ok or lo == nil then
+        return nil, nil
+    end
+    return lo, hi
+end
+
+-- ʕ •ᴥ•ʔ✿ WotLK 3.3.5: equipment uses GetInventorySlotInfo + Custom_GetItemGuid (no Retail C_Container.*). ✿ ʕ •ᴥ•ʔ
+function AH.GetItemGuidPairForEquippedInventorySlot(slotName)
+    local cg = _G.Custom_GetItemGuid
+    if type(cg) ~= "function" or not slotName then
+        return nil, nil
+    end
+    local invSlot = GetInventorySlotInfo(slotName)
+    if not invSlot then
+        return nil, nil
+    end
+    local ok, lo, hi = pcall(cg, 0xFF, invSlot)
+    if ok and lo ~= nil then
+        return lo, hi
+    end
+    if invSlot >= 1 then
+        ok, lo, hi = pcall(cg, 0xFF, invSlot - 1)
+        if ok and lo ~= nil then
+            return lo, hi
+        end
+    end
+    return nil, nil
+end
+
+function AH.CreateItemIdentifierFromEquippedPaperdoll(itemLink, itemName, inventorySlotName)
+    if not itemLink then
+        return itemName
+    end
     local itemId = AH.GetItemIDFromLink(itemLink)
-    if not itemId then return itemName end -- Fallback to name if no ID
-    
-    -- Create unique identifier: "ItemName|ItemID"
+    if not itemId then
+        return itemName
+    end
+    local base = itemName .. "|" .. tostring(itemId)
+    local lo, hi = AH.GetItemGuidPairForEquippedInventorySlot(inventorySlotName)
+    if lo ~= nil and hi ~= nil then
+        local sig = AH.CompressItemGuidSignature(lo, hi)
+        if sig then
+            return base .. "|" .. sig
+        end
+    end
+    return base
+end
+
+function AH.GetLegacyItemIdentifier(itemLink, itemName)
+    if not itemLink then
+        return itemName
+    end
+    local itemId = AH.GetItemIDFromLink(itemLink)
+    if not itemId then
+        return itemName
+    end
     return itemName .. "|" .. tostring(itemId)
 end
 
+function AH.CreateItemIdentifier(itemLink, itemName, nativeBag, nativeSlot)
+    if not itemLink then
+        return itemName
+    end
+
+    local itemId = AH.GetItemIDFromLink(itemLink)
+    if not itemId then
+        return itemName
+    end
+
+    local base = itemName .. "|" .. tostring(itemId)
+    if nativeBag ~= nil and nativeSlot ~= nil then
+        local lo, hi = AH.GetItemGuidPairFromNativeBagSlot(nativeBag, nativeSlot)
+        if lo ~= nil and hi ~= nil then
+            local sig = AH.CompressItemGuidSignature(lo, hi)
+            if sig then
+                return base .. "|" .. sig
+            end
+        end
+    end
+    return base
+end
+
+function AH.MaybePrintAHSetSignatureBagTip(itemLink, identifier)
+    if type(_G.Custom_GetItemGuid) ~= "function" then
+        return
+    end
+    if not itemLink or type(identifier) ~= "string" then
+        return
+    end
+    if string.match(identifier, "|g%x+_%x+$") then
+        return
+    end
+    if AH.FindFirstNativeBagSlotForItemLink(itemLink) ~= nil then
+        return
+    end
+    local msg = "Keep the item in your bags when adding it to AHSet so its unique signature can be saved. If you only have one copy, an equipped link alone may not capture it."
+    print("|cffffd200[AttuneHelper]|r " .. (AH.t and AH.t("AHSet keep item in bags for instance signature") or msg))
+end
+
+function AH.FindFirstNativeBagSlotForItemLink(itemLink)
+    if not itemLink then
+        return nil, nil
+    end
+    for bag = 0, 4 do
+        local n = GetContainerNumSlots(bag)
+        if n and n > 0 then
+            for slot = 1, n do
+                local l = GetContainerItemLink(bag, slot)
+                if l == itemLink then
+                    return bag, slot
+                end
+            end
+        end
+    end
+    return nil, nil
+end
+
+function AH.WipeAHSetKeysForItemIdentity(itemLink, itemName, identifierHint)
+    if not AHSetList or type(AHSetList) ~= "table" then
+        return
+    end
+    AHSetList[itemName] = nil
+    local legacy = itemLink and AH.GetLegacyItemIdentifier(itemLink, itemName)
+    if not legacy and identifierHint then
+        local id = AH.GetItemIDFromIdentifier(identifierHint)
+        local nm = AH.GetItemNameFromIdentifier(identifierHint)
+        if id and nm then
+            legacy = nm .. "|" .. tostring(id)
+        end
+    end
+    if legacy then
+        AHSetList[legacy] = nil
+        local prefix = legacy .. "|"
+        for k in pairs(AHSetList) do
+            if type(k) == "string" and (k == legacy or string.sub(k, 1, string.len(prefix)) == prefix) then
+                AHSetList[k] = nil
+            end
+        end
+    end
+    if itemLink then
+        local bag, slot = AH.FindFirstNativeBagSlotForItemLink(itemLink)
+        if bag ~= nil and slot ~= nil then
+            AHSetList[AH.CreateItemIdentifier(itemLink, itemName, bag, slot)] = nil
+        end
+    elseif identifierHint then
+        AHSetList[identifierHint] = nil
+    end
+end
+
+function AH.GetAHSetDesignatedSlotForBagRec(rec)
+    if not rec or not AHSetList or type(AHSetList) ~= "table" then
+        return nil
+    end
+    local link = AH.GetBagRecLink(rec)
+    local name = AH.GetBagRecName(rec)
+    if not name then
+        return nil
+    end
+    local primary = link and AH.CreateItemIdentifier(link, name, rec.bag, rec.slot)
+    local legacy = link and AH.GetLegacyItemIdentifier(link, name)
+    return (primary and AHSetList[primary])
+        or (legacy and AHSetList[legacy])
+        or AHSetList[name]
+end
+
+function AH.BagRecMatchesAHSetKey(rec, setKey)
+    if not rec or not setKey or type(setKey) ~= "string" then
+        return false
+    end
+    local name = AH.GetBagRecName(rec)
+    if not name then
+        return false
+    end
+    if setKey == name then
+        return true
+    end
+    local link = AH.GetBagRecLink(rec)
+    if not link then
+        return false
+    end
+    local full = AH.CreateItemIdentifier(link, name, rec.bag, rec.slot)
+    local leg = AH.GetLegacyItemIdentifier(link, name)
+    return setKey == full or setKey == leg
+end
+
 function AH.GetItemNameFromIdentifier(identifier)
-    if not identifier then return nil end
-    
-    -- Extract name from "ItemName|ItemID" format
-    local name = string.match(identifier, "^(.-)|")
-    return name or identifier -- Return original if no separator found
+    if not identifier then
+        return nil
+    end
+    local name = string.match(identifier, "^([^|]+)|")
+    return name or identifier
 end
 
 function AH.GetItemIDFromIdentifier(identifier)
-    if not identifier then return nil end
-    
-    -- Extract ID from "ItemName|ItemID" format
-    local id = string.match(identifier, "|(%d+)$")
-    return id and tonumber(id) or nil
+    if not identifier or not string.find(identifier, "|") then
+        return nil
+    end
+    return tonumber(string.match(identifier, "^[^|]+|(%d+)"))
 end
 
 -- Enhanced item comparison for duplicate detection
@@ -446,7 +642,7 @@ function AH.GetAHSetMainHandItemLink()
     local chosen, fallback
     for k, v in pairs(AHSetList) do
         if v == "MainHandSlot" then
-            if type(k) == "string" and string.match(k, "|%d+$") then
+            if type(k) == "string" and AH.GetItemIDFromIdentifier(k) then
                 chosen = k
                 break
             end
@@ -1076,6 +1272,7 @@ function AH.InitializeDefaultSettings()
         ["Sell Attuned Mythic Gear?"] = 0, 
         ["Auto Equip Attunable After Combat"] = 0, 
         ["Do Not Sell BoE Items"] = 1,
+        ["Ignore Always-Vendor for Warforged and Lightforged"] = 1,
         ["Do Not Sell Grey And White Items"] = 0,
         ["Limit Selling to 12 Items?"] = 0, 
         ["Disable Auto-Equip Mythic BoE"] = 1, 

@@ -743,6 +743,9 @@ function AH.OnEvent(self, event, arg1)
         else
             AH.merchantWindowOpen = false
         end
+        if AH.SetAddVendorToggleMode then
+            AH.SetAddVendorToggleMode(false)
+        end
     elseif event == "CHAT_MSG_SYSTEM" then
         local message = arg1
         if message and string.find(message, "You have attuned with", 1, true) then

@@ -656,6 +656,7 @@ AH.general_options_list_for_checkboxes = {
     {text = "Sell Attuned Mythic Gear?", dbKey = "Sell Attuned Mythic Gear?"},
     {text = "Auto Equip Attunable After Combat", dbKey = "Auto Equip Attunable After Combat"},
     {text = "Do Not Sell BoE Items", dbKey = "Do Not Sell BoE Items"},
+    {text = "Ignore Always-Vendor for Warforged and Lightforged", dbKey = "Ignore Always-Vendor for Warforged and Lightforged"},
 	{text = "Do Not Sell Grey And White Items", dbKey = "Do Not Sell Grey And White Items"},
     {text = "Limit Selling to 12 Items?", dbKey = "Limit Selling to 12 Items?"},
     {text = "Disable Auto-Equip Mythic BoE", dbKey = "Disable Auto-Equip Mythic BoE"},
@@ -745,6 +746,17 @@ function AH.ApplyGeneralOptionTooltip(cb, dbKey)
             GameTooltip:SetText(AH.t("Do Not Sell Grey And White Items"))
             GameTooltip:AddLine(
                 AH.t("With this setting off, it will not vendor non-BoP white/grey items if the item can be attuned."),
+                1, 0.82, 0.2, true
+            )
+            GameTooltip:Show()
+        end)
+        cb:SetScript("OnLeave", GameTooltip_Hide)
+    elseif dbKey == "Ignore Always-Vendor for Warforged and Lightforged" then
+        cb:SetScript("OnEnter", function(s)
+            GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+            GameTooltip:SetText(AH.t("Ignore Always-Vendor for Warforged and Lightforged"))
+            GameTooltip:AddLine(
+                AH.t("When enabled, Warforged and Lightforged variants cannot be added to the always-vendor list and do not use the always-vendor bypass when selling."),
                 1, 0.82, 0.2, true
             )
             GameTooltip:Show()

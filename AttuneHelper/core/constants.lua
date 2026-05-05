@@ -63,7 +63,8 @@ AH.slotAliases = {
     finger1="Finger0Slot", finger2="Finger1Slot", ring1="Finger0Slot", ring2="Finger1Slot", 
     trinket1="Trinket0Slot", trinket2="Trinket1Slot", mh="MainHandSlot", mainhand="MainHandSlot", 
     ranged="RangedSlot",
-    prepmh = "PrepMainHandSlot", prepoh = "PrepOffHandSlot"
+    prepmh = "PrepMainHandSlot", prepoh = "PrepOffHandSlot",
+    prep1h = "PrepMainHandSlot"
 }
 
 -- ʕ •ᴥ•ʔ✿ Slot name to slot mapping for /ah blacklist command ✿ ʕ •ᴥ•ʔ

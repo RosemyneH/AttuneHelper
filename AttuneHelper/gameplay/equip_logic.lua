@@ -16,12 +16,6 @@ local attunableListCache = {
 local ATTUNABLE_LIST_CACHE_TTL = 0.5
 
 -- ʕ •ᴥ•ʔ✿ Cursor safety tooltip for disenchant preparation ✿ ʕ •ᴥ•ʔ
-local function BagRecAhsetKey(rec)
-    if not rec then
-        return nil
-    end
-    return AH.CreateItemIdentifier(AH.GetBagRecLink(rec), AH.GetBagRecName(rec))
-end
 
 local AHDisenchantSafetyTooltip =
     CreateFrame("GameTooltip", "AHDisenchantSafetyTooltip", UIParent, "GameTooltipTemplate")
@@ -534,8 +528,7 @@ local function recDesignatedForSecondaryHand(rec)
     if not rec or not AHSetList then
         return false
     end
-    local identifier = BagRecAhsetKey(rec)
-    local d = AHSetList[identifier] or AHSetList[AH.GetBagRecName(rec)]
+    local d = AH.GetAHSetDesignatedSlotForBagRec(rec)
     local prepOH = AH.AHSET_PREP_OFFHAND_SLOT or "PrepOffHandSlot"
     return d == "SecondaryHandSlot" or d == prepOH
 end
@@ -544,8 +537,7 @@ local function recDesignatedForSecondaryHandExact(rec)
     if not rec or not AHSetList then
         return false
     end
-    local identifier = BagRecAhsetKey(rec)
-    local d = AHSetList[identifier] or AHSetList[AH.GetBagRecName(rec)]
+    local d = AH.GetAHSetDesignatedSlotForBagRec(rec)
     return d == "SecondaryHandSlot"
 end
 
@@ -655,8 +647,7 @@ local function findAhsetPrepOffhandBagRec(isEquipNewAffixesOnlyEnabled)
         if bagTbl then
             for _, rec in pairs(bagTbl) do
                 if rec and rec.inSet and rec.equipSlot then
-                    local identifier = BagRecAhsetKey(rec)
-                    local designated = AHSetList[identifier] or AHSetList[AH.GetBagRecName(rec)]
+                    local designated = AH.GetAHSetDesignatedSlotForBagRec(rec)
                     if designated == prepOH then
                         local el = rec.equipSlot
                         local fitsOH = (el == "INVTYPE_WEAPONOFFHAND"
@@ -697,8 +688,7 @@ local function collectAhsetOneHandMainHandCandidates()
         if bagTbl then
             for _, rec in pairs(bagTbl) do
                 if rec and rec.inSet then
-                    local identifier = BagRecAhsetKey(rec)
-                    local designated = AHSetList[identifier] or AHSetList[AH.GetBagRecName(rec)]
+                    local designated = AH.GetAHSetDesignatedSlotForBagRec(rec)
                     local prepMH = AH.AHSET_PREP_MAINHAND_SLOT or "PrepMainHandSlot"
                     if designated == "MainHandSlot" or designated == prepMH then
                         local el = rec.equipSlot
@@ -1042,8 +1032,7 @@ function AH.EquipAllAttunables()
                 if bagTbl and not p3Matched then
                     for _, rec in pairs(bagTbl) do
                         if not p3Matched and rec and rec.inSet then
-                            local recIdentifier = BagRecAhsetKey(rec)
-                            if (setKey == recIdentifier or setKey == AH.GetBagRecName(rec)) and AH.CanEquipItemPolicyCheck(rec) then
+                            if (AH.BagRecMatchesAHSetKey(rec, setKey) or setKey == AH.GetBagRecName(rec)) and AH.CanEquipItemPolicyCheck(rec) then
                                 targetedSlots[resolvedTarget] = true
                                 p3Matched = true
                             end
@@ -1278,8 +1267,7 @@ function AH.EquipAllAttunables()
             return
         end
         for _, rec_set in ipairs(candidates) do
-            local identifier = BagRecAhsetKey(rec_set)
-            local designatedSlotForCandidate = AHSetList[identifier] or AHSetList[AH.GetBagRecName(rec_set)]
+            local designatedSlotForCandidate = AH.GetAHSetDesignatedSlotForBagRec(rec_set)
             if designatedSlotForCandidate == slotName then
                 local candidateEquipLoc = rec_set.equipSlot
                 local equipThisSetItem = false
@@ -1494,8 +1482,7 @@ function AH.EquipAHSetOnly()
                 if bagTbl and not chosenCandidate then
                     for _, rec in pairs(bagTbl) do
                         if not chosenCandidate and rec then
-                            local identifier = BagRecAhsetKey(rec)
-                            local designatedSlot = AHSetList[identifier] or AHSetList[AH.GetBagRecName(rec)]
+                            local designatedSlot = AH.GetAHSetDesignatedSlotForBagRec(rec)
                             if designatedSlot == targetSlot and canCandidateEquipSlot(targetSlot, rec.equipSlot, currentMHLink, AH.GetBagRecLink(rec)) then
                                 chosenCandidate = rec
                                 foundAnyAHSetCandidate = true
@@ -1595,8 +1582,9 @@ function AH.SortInventoryItems()
         end
 
         -- Check 4: Must not be in AHSet list
-        local setIdentifier = AH.CreateItemIdentifier(itemLink, itemName)
-        if AHSetList and (AHSetList[setIdentifier] or AHSetList[itemName]) then
+        local setIdentifier = AH.CreateItemIdentifier(itemLink, itemName, bag, slot)
+        local legacySetId = AH.GetLegacyItemIdentifier(itemLink, itemName)
+        if AHSetList and (AHSetList[setIdentifier] or (legacySetId and AHSetList[legacySetId]) or AHSetList[itemName]) then
             return false, "In AHSet list"
         end
 
@@ -1860,7 +1848,7 @@ end
 ------------------------------------------------------------------------
 -- Update AHSet to current equiped items functionality
 ------------------------------------------------------------------------
-function AH.AssignItemToAHSetSlot(identifier, itemName, targetSlotName)
+function AH.AssignItemToAHSetSlot(identifier, itemName, targetSlotName, itemLink)
     if not identifier or not itemName or not targetSlotName then
         return false
     end
@@ -1870,11 +1858,8 @@ function AH.AssignItemToAHSetSlot(identifier, itemName, targetSlotName)
         AHSetList = {}
     end
 
-    -- Remove old mapping for this item.
-    AHSetList[identifier] = nil
-    AHSetList[itemName] = nil
+    AH.WipeAHSetKeysForItemIdentity(itemLink, itemName, identifier)
 
-    -- Keep only one AHSet item per slot by removing previous occupant(s).
     for setKey, assignedSlot in pairs(AHSetList) do
         if assignedSlot == targetSlotName then
             AHSetList[setKey] = nil
@@ -1896,6 +1881,9 @@ function AH.AssignItemToAHSetSlot(identifier, itemName, targetSlotName)
     end
     if AH.ForceSaveSettings then
         AH.ForceSaveSettings()
+    end
+    if AH.MaybePrintAHSetSignatureBagTip then
+        AH.MaybePrintAHSetSignatureBagTip(itemLink, identifier)
     end
     return true
 end
@@ -1938,13 +1926,19 @@ local function EnsureAHSetSlotChoicePopup()
             end
         end,
         OnAccept = function(_, data)
-            if data and data.identifier and data.itemName and data.slot1 then
-                AH.AssignItemToAHSetSlot(data.identifier, data.itemName, data.slot1)
+            if data and data.itemName and data.slot1 then
+                local link = data.itemLink
+                local bag, slot = AH.FindFirstNativeBagSlotForItemLink(link)
+                local id = AH.CreateItemIdentifier(link, data.itemName, bag, slot)
+                AH.AssignItemToAHSetSlot(id, data.itemName, data.slot1, link)
             end
         end,
         OnCancel = function(_, data, reason)
-            if reason == "clicked" and data and data.identifier and data.itemName and data.slot2 then
-                AH.AssignItemToAHSetSlot(data.identifier, data.itemName, data.slot2)
+            if reason == "clicked" and data and data.itemName and data.slot2 then
+                local link = data.itemLink
+                local bag, slot = AH.FindFirstNativeBagSlotForItemLink(link)
+                local id = AH.CreateItemIdentifier(link, data.itemName, bag, slot)
+                AH.AssignItemToAHSetSlot(id, data.itemName, data.slot2, link)
             end
         end,
         timeout = 0,
@@ -1976,7 +1970,6 @@ function AH.AddCursorItemToAHSet()
         return false
     end
 
-    local identifier = AH.CreateItemIdentifier(itemLink, itemName)
     local unifiedSlot = AH.itemTypeToUnifiedSlot and AH.itemTypeToUnifiedSlot[itemEquipLoc] or nil
 
     if type(unifiedSlot) == "table" then
@@ -1995,7 +1988,7 @@ function AH.AddCursorItemToAHSet()
             string.format("Choose AHSet slot for '%s':", itemName),
             nil,
             {
-                identifier = identifier,
+                itemLink = itemLink,
                 itemName = itemName,
                 slot1 = slot1,
                 slot2 = slot2,
@@ -2011,7 +2004,9 @@ function AH.AddCursorItemToAHSet()
         return false
     end
 
-    AH.AssignItemToAHSetSlot(identifier, itemName, unifiedSlot)
+    local bag, slot = AH.FindFirstNativeBagSlotForItemLink(itemLink)
+    local identifier = AH.CreateItemIdentifier(itemLink, itemName, bag, slot)
+    AH.AssignItemToAHSetSlot(identifier, itemName, unifiedSlot, itemLink)
     ClearCursor()
     return true
 end
@@ -2032,7 +2027,8 @@ function AH.AssignItemToAHSetPaperdollSlot(targetSlotName, itemLink)
         return false
     end
 
-    local identifier = AH.CreateItemIdentifier(itemLink, itemName)
+    local bag, slot = AH.FindFirstNativeBagSlotForItemLink(itemLink)
+    local identifier = AH.CreateItemIdentifier(itemLink, itemName, bag, slot)
     local unifiedSlot = AH.itemTypeToUnifiedSlot and AH.itemTypeToUnifiedSlot[itemEquipLoc] or nil
     local prepMH = AH.AHSET_PREP_MAINHAND_SLOT or "PrepMainHandSlot"
     local prepOH = AH.AHSET_PREP_OFFHAND_SLOT or "PrepOffHandSlot"
@@ -2084,7 +2080,7 @@ function AH.AssignItemToAHSetPaperdollSlot(targetSlotName, itemLink)
         return false
     end
 
-    AH.AssignItemToAHSetSlot(identifier, itemName, targetSlotName)
+    AH.AssignItemToAHSetSlot(identifier, itemName, targetSlotName, itemLink)
     ClearCursor()
     return true
 end
@@ -2108,11 +2104,8 @@ function AH.SetAHSetToEquipped()
             local linkForId = equippedItemLink or ("item:" .. eqID)
             local equippedItemName = AH.GetItemDisplayName and AH.GetItemDisplayName(eqID, equippedItemLink) or GetItemInfo(equippedItemLink)
             if equippedItemName then
-                local identifier = AH.CreateItemIdentifier(linkForId, equippedItemName)
+                local identifier = AH.CreateItemIdentifierFromEquippedPaperdoll(linkForId, equippedItemName, slotName)
                 AHSetList[identifier] = slotName
-                if not AHSetList[equippedItemName] then
-                    AHSetList[equippedItemName] = slotName
-                end
                 print("|cffffd200[AH]|r '" .. equippedItemName .. "' (ID: " .. tostring(eqID) ..
                     ") added to AHSet, designated for slot " .. slotName .. ".")
             end

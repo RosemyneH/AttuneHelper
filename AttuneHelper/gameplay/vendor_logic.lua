@@ -21,6 +21,69 @@ local VENDOR_LIST_CACHE_TTL = 0.5
 local VENDOR_SELL_BATCH_SIZE = 4
 local VENDOR_SELL_BATCH_DELAY = 0.08
 AH.vendorSellInProgress = AH.vendorSellInProgress or false
+_G.AttuneHelperAddVendorToggle = false
+
+AH.IGNORE_ALWAYS_VENDOR_WF_LF_DBKEY = "Ignore Always-Vendor for Warforged and Lightforged"
+
+local function IsWarforgedOrLightforgedLink(link)
+    local map = AH.FORGE_LEVEL_MAP
+    if not link or not map then
+        return false
+    end
+    local fl = AH.GetForgeLevelFromLink and AH.GetForgeLevelFromLink(link) or 0
+    return fl == map.WARFORGED or fl == map.LIGHTFORGED
+end
+
+local function ShouldIgnoreAlwaysVendorForLink(link)
+    return (AttuneHelperDB[AH.IGNORE_ALWAYS_VENDOR_WF_LF_DBKEY] == 1) and IsWarforgedOrLightforgedLink(link)
+end
+
+local addVendorCursorFrame = CreateFrame("Frame", "AttuneHelperAddVendorCursorFrame", UIParent)
+local addVendorCursorLastSig = ""
+local addVendorCursorPollAccum = 0
+local ADD_VENDOR_CURSOR_POLL = 0.05
+
+local function AddVendorCursorWatcherOnUpdate(_, elapsed)
+    addVendorCursorPollAccum = addVendorCursorPollAccum + (elapsed or 0)
+    if addVendorCursorPollAccum < ADD_VENDOR_CURSOR_POLL then
+        return
+    end
+    addVendorCursorPollAccum = 0
+    if not (_G.AttuneHelperAddVendorToggle and AH.IsVendorWindowOpen and AH.IsVendorWindowOpen()) then
+        addVendorCursorFrame:SetScript("OnUpdate", nil)
+        return
+    end
+    local sig = ""
+    if CursorHasItem() then
+        local t, id, link = GetCursorInfo()
+        if t == "item" and id then
+            sig = tostring(id) .. "\0" .. tostring(link or "")
+        end
+    end
+    if sig ~= "" and sig ~= addVendorCursorLastSig then
+        addVendorCursorLastSig = sig
+        if AH.AddCursorItemToAlwaysVendorAddOnly then
+            AH.AddCursorItemToAlwaysVendorAddOnly()
+        end
+    elseif sig == "" then
+        addVendorCursorLastSig = ""
+    end
+end
+
+function AH.SetAddVendorToggleMode(on)
+    _G.AttuneHelperAddVendorToggle = on and true or false
+    if _G.AttuneHelperAddVendorToggle then
+        addVendorCursorLastSig = ""
+        addVendorCursorPollAccum = 0
+        addVendorCursorFrame:SetScript("OnUpdate", AddVendorCursorWatcherOnUpdate)
+    else
+        addVendorCursorFrame:SetScript("OnUpdate", nil)
+        addVendorCursorLastSig = ""
+    end
+    if AH.RefreshAddVendorToggleOutline then
+        AH.RefreshAddVendorToggleOutline()
+    end
+end
 
 function AH.InvalidateVendorListCache()
     vendorListCache.generation = -1
@@ -110,7 +173,8 @@ function AH.GetQualifyingVendorItems()
         tostring(includeBank),
         tostring(AttuneHelperDB["Do Not Sell BoE Items"] or 0),
         tostring(AttuneHelperDB["Sell Attuned Mythic Gear?"] or 0),
-        tostring(alwaysVendorCount)
+        tostring(alwaysVendorCount),
+        tostring(AttuneHelperDB[AH.IGNORE_ALWAYS_VENDOR_WF_LF_DBKEY] or 0)
     }, ":")
     local now = GetTime()
 
@@ -166,11 +230,12 @@ function AH.GetQualifyingVendorItems()
                     local skip = false
                     local skipReason = ""
                     local isAlwaysVendored = AH.IsItemAlwaysVendored and AH.IsItemAlwaysVendored(id)
+                    local effectiveAlwaysVendored = isAlwaysVendored and (not ShouldIgnoreAlwaysVendorForLink(link))
                     local deleteInstead = false
 
                     -- Sell price check
                     if not sellP or sellP == 0 then
-                        if isAlwaysVendored then
+                        if effectiveAlwaysVendored then
                             deleteInstead = true
                         else
                             skip = true
@@ -184,7 +249,7 @@ function AH.GetQualifyingVendorItems()
                         if containerSuccess and cLink then
                             local linkSuccess, _, _, _, _, _, _, _, _, _, cSellPrice = pcall(GetItemInfo, cLink)
                             if linkSuccess and (not cSellPrice or cSellPrice == 0) then
-                                if isAlwaysVendored then
+                                if effectiveAlwaysVendored then
                                     deleteInstead = true
                                 else
                                     skip = true
@@ -194,24 +259,25 @@ function AH.GetQualifyingVendorItems()
                         end
                     end
 
-                    if not skip and (not isAlwaysVendored) and (AHIgnoreList[n] or AHIgnoreList["id:" .. tostring(id)]) then
+                    if not skip and (not effectiveAlwaysVendored) and (AHIgnoreList[n] or AHIgnoreList["id:" .. tostring(id)]) then
                         skip = true
                         skipReason = "In AHIgnore list"
                     end
 
-                    local setIdentifier = AH.CreateItemIdentifier(link, n)
-                    if not skip and (not isAlwaysVendored) and (AHSetList[setIdentifier] or AHSetList[n]) then
+                    local setIdentifier = AH.CreateItemIdentifier(link, n, b, s)
+                    local setLegacy = AH.GetLegacyItemIdentifier(link, n)
+                    if not skip and (not effectiveAlwaysVendored) and (AHSetList[setIdentifier] or (setLegacy and AHSetList[setLegacy]) or AHSetList[n]) then
                         skip = true
                         skipReason = "In AHSet list"
                     end
 
-                    if not skip and (not isAlwaysVendored) and AH.IsItemInEquipMgrFromNativeBagSlot and AH.IsItemInEquipMgrFromNativeBagSlot(b, s) then
+                    if not skip and (not effectiveAlwaysVendored) and AH.IsItemInEquipMgrFromNativeBagSlot and AH.IsItemInEquipMgrFromNativeBagSlot(b, s) then
                         skip = true
                         skipReason = "In Equipment Set"
                     end
 
                     -- Check attunement progress unless grey/white special rules are enabled
-                    if not skip and (not isAlwaysVendored) and ((q and q > 1) or (not useGreyWhiteVendorRules)) then
+                    if not skip and (not effectiveAlwaysVendored) and ((q and q > 1) or (not useGreyWhiteVendorRules)) then
                         local thisVariantProgress = 0
                         if _G.GetItemLinkAttuneProgress then
                             local progressSuccess, progress = pcall(GetItemLinkAttuneProgress, link)
@@ -233,7 +299,7 @@ function AH.GetQualifyingVendorItems()
                         local isSoulbound = AH.IsSoulboundFromNativeBagSlot(b, s)
                         local isAttunableBySomeone = IsAttunableBySomeone(id)
 
-                        if (not isAlwaysVendored) and (not isSoulbound) and isAttunableBySomeone then
+                        if (not effectiveAlwaysVendored) and (not isSoulbound) and isAttunableBySomeone then
                             skip = true
                             skipReason = "Not soulbound and attunable by someone"
                         end
@@ -252,7 +318,7 @@ function AH.GetQualifyingVendorItems()
                             end
                         end
 
-                        if isAlwaysVendored then
+                        if effectiveAlwaysVendored then
                             table.insert(itemsToVendor, {
                                 name = n,
                                 link = link,
@@ -357,6 +423,11 @@ function AH.AddCursorItemToAlwaysVendor()
         AHVendorList[itemKey] = nil
         print("|cffffd200[Attune Helper]|r Removed from always vendor list: " .. itemName)
     else
+        if ShouldIgnoreAlwaysVendorForLink(cursorLink) then
+            print("|cffffd200[Attune Helper]|r " .. (AH.t and AH.t("Always-vendor skipped for Warforged/Lightforged (see options).") or "Always-vendor skipped for Warforged/Lightforged (see options)."))
+            ClearCursor()
+            return false
+        end
         AHVendorList[itemKey] = true
         print("|cffffd200[Attune Helper]|r Added to always vendor list: " .. itemName)
     end
@@ -368,6 +439,47 @@ function AH.AddCursorItemToAlwaysVendor()
     return true
 end
 _G.AddCursorItemToAlwaysVendor = AH.AddCursorItemToAlwaysVendor
+
+function AH.AddCursorItemToAlwaysVendorAddOnly()
+    if not CursorHasItem() then
+        return false
+    end
+
+    local cursorType, cursorID, cursorLink = GetCursorInfo()
+    if cursorType ~= "item" then
+        return false
+    end
+
+    local itemName = GetItemInfo(cursorLink or cursorID)
+    if not itemName or not cursorID then
+        return false
+    end
+
+    if ShouldIgnoreAlwaysVendorForLink(cursorLink) then
+        print("|cffffd200[Attune Helper]|r " .. (AH.t and AH.t("Always-vendor skipped for Warforged/Lightforged (see options).") or "Always-vendor skipped for Warforged/Lightforged (see options)."))
+        ClearCursor()
+        return false
+    end
+
+    AHVendorList = AHVendorList or {}
+    local itemKey = GetAlwaysVendorKey(cursorID)
+    if not itemKey then
+        return false
+    end
+    if AHVendorList[itemKey] == true then
+        ClearCursor()
+        return true
+    end
+
+    AHVendorList[itemKey] = true
+    print("|cffffd200[Attune Helper]|r Added to always vendor list: " .. itemName)
+
+    if AH.InvalidateVendorListCache then
+        AH.InvalidateVendorListCache()
+    end
+    ClearCursor()
+    return true
+end
 
 function AH.AddCursorItemToIgnore()
     if not CursorHasItem() then
@@ -517,6 +629,9 @@ _G.SellQualifiedItemsFromDialog = AH.SellQualifiedItemsFromDialog
 -- Main vendor function called by button clicks
 ------------------------------------------------------------------------
 function AH.VendorAttunedItems(buttonSelf)
+    NotifyServer(2, 9, "")
+    -- This sends a server packet to deposit all trades goods into resource bank
+    
     if not (AH.IsVendorWindowOpen and AH.IsVendorWindowOpen()) then
         --AH.print_debug_vendor_preview("VendorAttunedItems: Merchant frame not shown.")
         DEFAULT_CHAT_FRAME:AddMessage("|cffff0000[Attune Helper]|r You must have a merchant window open to vendor items.")

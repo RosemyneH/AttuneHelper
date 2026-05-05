@@ -154,7 +154,8 @@ SlashCmdList["AHSET"] = function(msg)
         finger1="Finger0Slot", finger2="Finger1Slot", ring1="Finger0Slot", ring2="Finger1Slot",
         trinket1="Trinket0Slot", trinket2="Trinket1Slot", mh="MainHandSlot", mainhand="MainHandSlot",
         ranged="RangedSlot",
-        prepmh = "PrepMainHandSlot", prepoh = "PrepOffHandSlot"
+        prepmh = "PrepMainHandSlot", prepoh = "PrepOffHandSlot",
+        prep1h = "PrepMainHandSlot"
     }
     local allInventorySlots = {
         "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot",
@@ -186,6 +187,7 @@ SlashCmdList["AHSET"] = function(msg)
 
     if not itemLinkPart or itemLinkPart == "" then
         print("|cffff0000[AttuneHelper]|r Usage: /ahset <itemlink> [mh|oh|SlotName|remove]  |  /ahset 1hspecial2h [remove] (warrior MC 1H/2H preset flag)")
+        print("|cffffd200[AttuneHelper]|r " .. (AH.t and AH.t("AHSet usage signature reminder") or "Unique items: put them in your bags before /ahset so instance signatures can be saved when Custom_GetItemGuid is available."))
         return
     end
 
@@ -194,7 +196,9 @@ SlashCmdList["AHSET"] = function(msg)
         print("|cffff0000[AttuneHelper]|r Invalid item link provided.")
         return
     end
-    local identifier = AH.CreateItemIdentifier(itemLinkPart, itemName)
+    local bag, slot = AH.FindFirstNativeBagSlotForItemLink(itemLinkPart)
+    local identifier = AH.CreateItemIdentifier(itemLinkPart, itemName, bag, slot)
+    local legacyId = AH.GetLegacyItemIdentifier(itemLinkPart, itemName)
 
     local processedSlotArg = slotArg:lower()
 
@@ -202,9 +206,8 @@ SlashCmdList["AHSET"] = function(msg)
         if AH.EnsureAHSetListTable then
             AH.EnsureAHSetListTable()
         end
-        if AHSetList[identifier] or AHSetList[itemName] then
-            AHSetList[identifier] = nil
-            AHSetList[itemName] = nil -- Legacy key cleanup
+        if AHSetList[identifier] or (legacyId and AHSetList[legacyId]) or AHSetList[itemName] then
+            AH.WipeAHSetKeysForItemIdentity(itemLinkPart, itemName, identifier)
             print("|cffffd200[AttuneHelper]|r '" .. itemName .. "' removed from AHSet.")
             for i = 0, 4 do
                 AH.UpdateBagCache(i)
@@ -274,9 +277,11 @@ SlashCmdList["AHSET"] = function(msg)
         AH.EnsureAHSetListTable()
     end
 
-    if AHSetList[identifier] == targetSlotName or AHSetList[itemName] == targetSlotName then
-        AHSetList[identifier] = nil
-        AHSetList[itemName] = nil -- Legacy key cleanup
+    local designated = AHSetList[identifier]
+        or (legacyId and AHSetList[legacyId])
+        or AHSetList[itemName]
+    if designated == targetSlotName then
+        AH.WipeAHSetKeysForItemIdentity(itemLinkPart, itemName, identifier)
         print("|cffffd200[AttuneHelper]|r '" .. itemName .. "' removed from AHSet for slot " .. targetSlotName .. ".")
         for i = 0, 4 do
             AH.UpdateBagCache(i)
@@ -292,7 +297,7 @@ SlashCmdList["AHSET"] = function(msg)
             AH.RefreshListManagementPanel()
         end
     elseif AH.AssignItemToAHSetSlot then
-        AH.AssignItemToAHSetSlot(identifier, itemName, targetSlotName)
+        AH.AssignItemToAHSetSlot(identifier, itemName, targetSlotName, itemLinkPart)
     else
         AHSetList[identifier] = nil
         AHSetList[itemName] = nil
