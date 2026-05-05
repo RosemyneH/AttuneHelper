@@ -93,6 +93,28 @@ function AH.InvalidateVendorListCache()
 end
 _G.InvalidateVendorListCache = AH.InvalidateVendorListCache
 
+local function GetAHSetVendorSignature()
+    if AH.EnsureAHSetListTable then
+        AH.EnsureAHSetListTable()
+    end
+    if type(AHSetList) ~= "table" then
+        return "empty"
+    end
+
+    local keyCount = 0
+    local keyLenSum = 0
+    for k in pairs(AHSetList) do
+        keyCount = keyCount + 1
+        if type(k) == "string" then
+            keyLenSum = keyLenSum + string.len(k)
+        end
+    end
+
+    local guid = (AH.GetActivePlayerGUID and AH.GetActivePlayerGUID()) or "unknown"
+    local preset = (AH.GetActiveAHPresetName and AH.GetActiveAHPresetName()) or "Default"
+    return table.concat({ tostring(guid), tostring(preset), tostring(keyCount), tostring(keyLenSum) }, ":")
+end
+
 local function GetForgeBadgeText(itemLink)
     local forgeLevel = AH.GetForgeLevelFromLink and AH.GetForgeLevelFromLink(itemLink) or 0
     if forgeLevel == (AH.FORGE_LEVEL_MAP and AH.FORGE_LEVEL_MAP.WARFORGED or 2) then
@@ -157,9 +179,15 @@ _G.IsItemAlwaysVendored = AH.IsItemAlwaysVendored
 -- Get items that qualify for vendoring based on settings
 ------------------------------------------------------------------------
 function AH.GetQualifyingVendorItems()
+    if AH.EnsureAHSetListTable then
+        AH.EnsureAHSetListTable()
+    end
+    local activeAHSet = (type(AHSetList) == "table") and AHSetList or {}
+
     local generation = AH.bagCacheGeneration or 0
     local useGreyWhiteVendorRules = (AttuneHelperDB["Do Not Sell Grey And White Items"] ~= 1)
     local includeBank = (BankFrame and BankFrame:IsShown()) and 1 or 0
+    local ahsetSig = GetAHSetVendorSignature()
     local alwaysVendorCount = 0
     if type(AHVendorList) == "table" then
         for key, enabled in pairs(AHVendorList) do
@@ -174,7 +202,8 @@ function AH.GetQualifyingVendorItems()
         tostring(AttuneHelperDB["Do Not Sell BoE Items"] or 0),
         tostring(AttuneHelperDB["Sell Attuned Mythic Gear?"] or 0),
         tostring(alwaysVendorCount),
-        tostring(AttuneHelperDB[AH.IGNORE_ALWAYS_VENDOR_WF_LF_DBKEY] or 0)
+        tostring(AttuneHelperDB[AH.IGNORE_ALWAYS_VENDOR_WF_LF_DBKEY] or 0),
+        tostring(ahsetSig)
     }, ":")
     local now = GetTime()
 
@@ -266,7 +295,7 @@ function AH.GetQualifyingVendorItems()
 
                     local setIdentifier = AH.CreateItemIdentifier(link, n, b, s)
                     local setLegacy = AH.GetLegacyItemIdentifier(link, n)
-                    if not skip and (not effectiveAlwaysVendored) and (AHSetList[setIdentifier] or (setLegacy and AHSetList[setLegacy]) or AHSetList[n]) then
+                    if not skip and (not effectiveAlwaysVendored) and (activeAHSet[setIdentifier] or (setLegacy and activeAHSet[setLegacy]) or activeAHSet[n]) then
                         skip = true
                         skipReason = "In AHSet list"
                     end
