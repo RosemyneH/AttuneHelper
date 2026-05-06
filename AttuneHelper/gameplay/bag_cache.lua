@@ -163,6 +163,27 @@ function AH.UpdateBagCache(bagID)
                     local idKey = itemID and AH.CreateItemIdentifier(link, name, bagID, slotID) or name
                     local legacyKey = itemID and (name .. "|" .. tostring(itemID)) or name
                     local inSet = (AHSetList and (AHSetList[idKey] ~= nil or AHSetList[legacyKey] ~= nil or AHSetList[name] ~= nil))
+                    if not inSet and AHSetList and itemID then
+                        local recSig = nil
+                        if AH.GetBagRecGuidSignature then
+                            recSig = AH.GetBagRecGuidSignature({ bag = bagID, slot = slotID })
+                        end
+                        if recSig and AH.GetGuidSignatureFromIdentifier and AH.GetItemNameFromIdentifier and AH.GetItemIDFromIdentifier then
+                            for setKey in pairs(AHSetList) do
+                                if type(setKey) == "string" then
+                                    local setSig = AH.GetGuidSignatureFromIdentifier(setKey)
+                                    if setSig and setSig == recSig then
+                                        local setName = AH.GetItemNameFromIdentifier(setKey)
+                                        local setId = AH.GetItemIDFromIdentifier(setKey)
+                                        if setName == name and setId == itemID then
+                                            inSet = true
+                                            break
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
 
                     if canPlayerAttune or inSet then
                         -- ʕ •ᴥ•ʔ✿ Cache stable per-rec fields so hot loops don't

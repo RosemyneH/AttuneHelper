@@ -2193,7 +2193,11 @@ function AH.SetAHSetToEquipped()
             local equippedItemName = AH.GetItemDisplayName and AH.GetItemDisplayName(eqID, equippedItemLink) or GetItemInfo(equippedItemLink)
             if equippedItemName then
                 local identifier = AH.CreateItemIdentifierFromEquippedPaperdoll(linkForId, equippedItemName, slotName)
+                local legacyIdentifier = AH.GetLegacyItemIdentifier(linkForId, equippedItemName)
                 AHSetList[identifier] = slotName
+                if legacyIdentifier then
+                    AHSetList[legacyIdentifier] = slotName
+                end
                 print("|cffffd200[AH]|r '" .. equippedItemName .. "' (ID: " .. tostring(eqID) ..
                     ") added to AHSet, designated for slot " .. slotName .. ".")
             end

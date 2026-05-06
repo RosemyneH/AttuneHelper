@@ -181,6 +181,20 @@ function AH.WipeAHSetKeysForItemIdentity(itemLink, itemName, identifierHint)
             end
         end
     end
+    if not legacy and identifierHint and type(identifierHint) == "string" then
+        local id = AH.GetItemIDFromIdentifier(identifierHint)
+        local nm = AH.GetItemNameFromIdentifier(identifierHint)
+        if id and nm then
+            local derivedLegacy = nm .. "|" .. tostring(id)
+            AHSetList[derivedLegacy] = nil
+            local derivedPrefix = derivedLegacy .. "|"
+            for k in pairs(AHSetList) do
+                if type(k) == "string" and string.sub(k, 1, string.len(derivedPrefix)) == derivedPrefix then
+                    AHSetList[k] = nil
+                end
+            end
+        end
+    end
     if itemLink then
         local bag, slot = AH.FindFirstNativeBagSlotForItemLink(itemLink)
         if bag ~= nil and slot ~= nil then
@@ -202,9 +216,43 @@ function AH.GetAHSetDesignatedSlotForBagRec(rec)
     end
     local primary = link and AH.CreateItemIdentifier(link, name, rec.bag, rec.slot)
     local legacy = link and AH.GetLegacyItemIdentifier(link, name)
-    return (primary and AHSetList[primary])
+
+    local designated = (primary and AHSetList[primary])
         or (legacy and AHSetList[legacy])
         or AHSetList[name]
+    if designated then
+        return designated
+    end
+
+    -- Strict signature fallback: resolve by exact item GUID signature only.
+    -- This keeps duplicate name|id items from cross-matching.
+    local recSig = AH.GetBagRecGuidSignature(rec)
+    if legacy and recSig then
+        for key, slot in pairs(AHSetList) do
+            if type(key) == "string" and type(slot) == "string" then
+                local setSig = AH.GetGuidSignatureFromIdentifier(key)
+                if setSig and setSig == recSig then
+                    local setName = AH.GetItemNameFromIdentifier(key)
+                    local setId = AH.GetItemIDFromIdentifier(key)
+                    local keyLegacy = (setName and setId) and (setName .. "|" .. tostring(setId)) or nil
+                    if keyLegacy and keyLegacy == legacy then
+                        if AH.print_debug_ahset then
+                            AH.print_debug_ahset("AHSet GUID match for " .. tostring(legacy) .. " via key " .. tostring(key))
+                        end
+                        return slot
+                    end
+                end
+            end
+        end
+    end
+
+    if AH.print_debug_ahset then
+        AH.print_debug_ahset(
+            "AHSet miss for bag rec: " .. tostring(name) ..
+            " (" .. tostring(legacy or "no-id") .. ", sig=" .. tostring(recSig or "none") .. ")"
+        )
+    end
+    return nil
 end
 
 function AH.BagRecMatchesAHSetKey(rec, setKey)
