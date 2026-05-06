@@ -106,6 +106,24 @@ function AH.CreateItemIdentifier(itemLink, itemName, nativeBag, nativeSlot)
     return base
 end
 
+function AH.GetGuidSignatureFromIdentifier(identifier)
+    if type(identifier) ~= "string" then
+        return nil
+    end
+    return string.match(identifier, "|(g%x+_%x+)$")
+end
+
+function AH.GetBagRecGuidSignature(rec)
+    if not rec or rec.bag == nil or rec.slot == nil then
+        return nil
+    end
+    local lo, hi = AH.GetItemGuidPairFromNativeBagSlot(rec.bag, rec.slot)
+    if lo == nil or hi == nil then
+        return nil
+    end
+    return AH.CompressItemGuidSignature(lo, hi)
+end
+
 function AH.MaybePrintAHSetSignatureBagTip(itemLink, identifier)
     if type(_G.Custom_GetItemGuid) ~= "function" then
         return
