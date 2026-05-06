@@ -2194,8 +2194,11 @@ function AH.SetAHSetToEquipped()
             if equippedItemName then
                 local identifier = AH.CreateItemIdentifierFromEquippedPaperdoll(linkForId, equippedItemName, slotName)
                 local legacyIdentifier = AH.GetLegacyItemIdentifier(linkForId, equippedItemName)
+                local guidSig = AH.GetGuidSignatureFromIdentifier and AH.GetGuidSignatureFromIdentifier(identifier)
                 AHSetList[identifier] = slotName
-                if legacyIdentifier then
+                -- Strict safety: if we have a GUID-scoped identifier, do not also
+                -- add a legacy alias that could match a different copy.
+                if legacyIdentifier and not guidSig then
                     AHSetList[legacyIdentifier] = slotName
                 end
                 print("|cffffd200[AH]|r '" .. equippedItemName .. "' (ID: " .. tostring(eqID) ..

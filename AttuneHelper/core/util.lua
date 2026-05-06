@@ -124,6 +124,22 @@ function AH.GetBagRecGuidSignature(rec)
     return AH.CompressItemGuidSignature(lo, hi)
 end
 
+function AH.AHSetHasGuidScopedEntryForLegacy(legacyKey)
+    if type(legacyKey) ~= "string" or type(AHSetList) ~= "table" then
+        return false
+    end
+    local prefix = legacyKey .. "|"
+    for key in pairs(AHSetList) do
+        if type(key) == "string"
+            and string.sub(key, 1, string.len(prefix)) == prefix
+            and AH.GetGuidSignatureFromIdentifier(key)
+        then
+            return true
+        end
+    end
+    return false
+end
+
 function AH.MaybePrintAHSetSignatureBagTip(itemLink, identifier)
     if type(_G.Custom_GetItemGuid) ~= "function" then
         return
@@ -217,33 +233,34 @@ function AH.GetAHSetDesignatedSlotForBagRec(rec)
     local primary = link and AH.CreateItemIdentifier(link, name, rec.bag, rec.slot)
     local legacy = link and AH.GetLegacyItemIdentifier(link, name)
 
+    local recSig = AH.GetBagRecGuidSignature(rec)
+    if legacy and AH.AHSetHasGuidScopedEntryForLegacy(legacy) then
+        -- Strict mode: when this item identity has any GUID-scoped AHSet entry,
+        -- only the exact GUID instance may match.
+        if recSig then
+            local exactGuidKey = legacy .. "|" .. recSig
+            local strictSlot = AHSetList[exactGuidKey]
+            if strictSlot then
+                if AH.print_debug_ahset then
+                    AH.print_debug_ahset("AHSet strict GUID match for " .. tostring(legacy) .. " via key " .. tostring(exactGuidKey))
+                end
+                return strictSlot
+            end
+        end
+        if AH.print_debug_ahset then
+            AH.print_debug_ahset(
+                "AHSet strict GUID miss for " .. tostring(legacy) ..
+                " (sig=" .. tostring(recSig or "none") .. ")"
+            )
+        end
+        return nil
+    end
+
     local designated = (primary and AHSetList[primary])
         or (legacy and AHSetList[legacy])
         or AHSetList[name]
     if designated then
         return designated
-    end
-
-    -- Strict signature fallback: resolve by exact item GUID signature only.
-    -- This keeps duplicate name|id items from cross-matching.
-    local recSig = AH.GetBagRecGuidSignature(rec)
-    if legacy and recSig then
-        for key, slot in pairs(AHSetList) do
-            if type(key) == "string" and type(slot) == "string" then
-                local setSig = AH.GetGuidSignatureFromIdentifier(key)
-                if setSig and setSig == recSig then
-                    local setName = AH.GetItemNameFromIdentifier(key)
-                    local setId = AH.GetItemIDFromIdentifier(key)
-                    local keyLegacy = (setName and setId) and (setName .. "|" .. tostring(setId)) or nil
-                    if keyLegacy and keyLegacy == legacy then
-                        if AH.print_debug_ahset then
-                            AH.print_debug_ahset("AHSet GUID match for " .. tostring(legacy) .. " via key " .. tostring(key))
-                        end
-                        return slot
-                    end
-                end
-            end
-        end
     end
 
     if AH.print_debug_ahset then
