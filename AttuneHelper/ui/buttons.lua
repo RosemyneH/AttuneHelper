@@ -123,7 +123,7 @@ local function GetCustomLayoutTrio(stateKey, showEquipAHSet)
     local dbBottomKey = "Layout " .. stateKey .. " Bottom"
     local defaults = {
         Normal = { top = "equipAll", center = "openSettings", bottom = "vendor" },
-        Shift = { top = "toggleAutoEquip", center = "nextAHPreset", bottom = "sort" },
+        Shift = { top = "toggleAutoEquip", center = "AHSetUpdate", bottom = "sort" },
         Ctrl = { top = "AHSetUpdate", center = "openSettings", bottom = "sort" }
     }
     local stateDefaults = defaults[stateKey] or defaults.Normal
@@ -136,11 +136,11 @@ local function GetCustomLayoutTrio(stateKey, showEquipAHSet)
 end
 
 -- ʕ •ᴥ•ʔ Standard (non-Custom) layout: Shift row = the trio
--- toggleAutoEquip, nextAHPreset, sort, plus equipAHSet only if that control is layout-enabled.
--- AHSetUpdate is not in this row; show it by assigning it in Custom layout, and keep it hidden
+-- toggleAutoEquip, AHSetUpdate, sort, plus equipAHSet only if that control is layout-enabled.
+-- nextAHPreset is not in this row; show it by assigning it in Custom layout, and keep it hidden
 -- in UpdateButtonGroupVisibility. hideOnShift = the Normal row (equipAll, openSettings, vendor).
 local function BuildShiftVisibilityLists()
-    local showOnShift = { "toggleAutoEquip", "nextAHPreset", "sort" }
+    local showOnShift = { "toggleAutoEquip", "AHSetUpdate", "sort" }
     if IsEquipAHSetButtonEnabled() then
         table.insert(showOnShift, "equipAHSet")
     end
@@ -170,24 +170,24 @@ local function ApplyMainDefaultLayout(buttons)
         buttons.toggleAutoEquip:ClearAllPoints()
         buttons.toggleAutoEquip:SetPoint("TOP", frame, "TOP", 0, -5)
     end
-    if buttons.nextAHPreset and buttons.toggleAutoEquip then
-        buttons.nextAHPreset:ClearAllPoints()
-        buttons.nextAHPreset:SetPoint("BOTTOM", buttons.toggleAutoEquip, "BOTTOM", 0, -27)
+    if buttons.AHSetUpdate and buttons.toggleAutoEquip then
+        buttons.AHSetUpdate:ClearAllPoints()
+        buttons.AHSetUpdate:SetPoint("BOTTOM", buttons.toggleAutoEquip, "BOTTOM", 0, -27)
     end
-    if buttons.sort and buttons.nextAHPreset then
+    if buttons.sort and buttons.AHSetUpdate then
         buttons.sort:ClearAllPoints()
-        buttons.sort:SetPoint("BOTTOM", buttons.nextAHPreset, "BOTTOM", 0, -27)
+        buttons.sort:SetPoint("BOTTOM", buttons.AHSetUpdate, "BOTTOM", 0, -27)
     end
     if buttons.equipAHSet and buttons.sort then
         buttons.equipAHSet:ClearAllPoints()
         buttons.equipAHSet:SetPoint("BOTTOM", buttons.sort, "BOTTOM", 0, -27)
     end
-    if buttons.AHSetUpdate then
-        buttons.AHSetUpdate:ClearAllPoints()
+    if buttons.nextAHPreset then
+        buttons.nextAHPreset:ClearAllPoints()
         if buttons.equipAHSet then
-            buttons.AHSetUpdate:SetPoint("BOTTOM", buttons.equipAHSet, "BOTTOM", 0, -27)
+            buttons.nextAHPreset:SetPoint("BOTTOM", buttons.equipAHSet, "BOTTOM", 0, -27)
         elseif buttons.sort then
-            buttons.AHSetUpdate:SetPoint("BOTTOM", buttons.sort, "BOTTOM", 0, -27)
+            buttons.nextAHPreset:SetPoint("BOTTOM", buttons.sort, "BOTTOM", 0, -27)
         end
     end
 end
@@ -218,24 +218,24 @@ local function ApplyMiniDefaultLayout(buttons)
         buttons.toggleAutoEquip:ClearAllPoints()
         buttons.toggleAutoEquip:SetPoint("LEFT", frame, "LEFT", padding, 0)
     end
-    if buttons.nextAHPreset and buttons.toggleAutoEquip then
-        buttons.nextAHPreset:ClearAllPoints()
-        buttons.nextAHPreset:SetPoint("LEFT", buttons.toggleAutoEquip, "RIGHT", spacing, 0)
+    if buttons.AHSetUpdate and buttons.toggleAutoEquip then
+        buttons.AHSetUpdate:ClearAllPoints()
+        buttons.AHSetUpdate:SetPoint("LEFT", buttons.toggleAutoEquip, "RIGHT", spacing, 0)
     end
-    if buttons.sort and buttons.nextAHPreset then
+    if buttons.sort and buttons.AHSetUpdate then
         buttons.sort:ClearAllPoints()
-        buttons.sort:SetPoint("LEFT", buttons.nextAHPreset, "RIGHT", spacing, 0)
+        buttons.sort:SetPoint("LEFT", buttons.AHSetUpdate, "RIGHT", spacing, 0)
     end
     if buttons.equipAHSet and buttons.sort then
         buttons.equipAHSet:ClearAllPoints()
         buttons.equipAHSet:SetPoint("LEFT", buttons.sort, "RIGHT", spacing, 0)
     end
-    if buttons.AHSetUpdate then
-        buttons.AHSetUpdate:ClearAllPoints()
+    if buttons.nextAHPreset then
+        buttons.nextAHPreset:ClearAllPoints()
         if buttons.equipAHSet then
-            buttons.AHSetUpdate:SetPoint("LEFT", buttons.equipAHSet, "RIGHT", spacing, 0)
+            buttons.nextAHPreset:SetPoint("LEFT", buttons.equipAHSet, "RIGHT", spacing, 0)
         elseif buttons.sort then
-            buttons.AHSetUpdate:SetPoint("LEFT", buttons.sort, "RIGHT", spacing, 0)
+            buttons.nextAHPreset:SetPoint("LEFT", buttons.sort, "RIGHT", spacing, 0)
         end
     end
 end

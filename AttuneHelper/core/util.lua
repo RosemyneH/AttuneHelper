@@ -1295,7 +1295,7 @@ function AH.InitializeDefaultSettings()
     if AttuneHelperDB["Layout Normal Center"] == nil then AttuneHelperDB["Layout Normal Center"] = "openSettings" end
     if AttuneHelperDB["Layout Normal Bottom"] == nil then AttuneHelperDB["Layout Normal Bottom"] = "vendor" end
     if AttuneHelperDB["Layout Shift Top"] == nil then AttuneHelperDB["Layout Shift Top"] = "toggleAutoEquip" end
-    if AttuneHelperDB["Layout Shift Center"] == nil then AttuneHelperDB["Layout Shift Center"] = "nextAHPreset" end
+    if AttuneHelperDB["Layout Shift Center"] == nil then AttuneHelperDB["Layout Shift Center"] = "AHSetUpdate" end
     if AttuneHelperDB["Layout Shift Bottom"] == nil then AttuneHelperDB["Layout Shift Bottom"] = "sort" end
     if AttuneHelperDB["Layout Ctrl Top"] == nil then AttuneHelperDB["Layout Ctrl Top"] = "AHSetUpdate" end
     if AttuneHelperDB["Layout Ctrl Center"] == nil then AttuneHelperDB["Layout Ctrl Center"] = "openSettings" end
