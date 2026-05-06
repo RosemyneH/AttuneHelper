@@ -109,6 +109,10 @@ function AH.LoadPopUps()
 		button1 = AH.t("Yes"),
 		button2 = AH.t("Cancel"),
 		OnAccept = function()
+			if AH.AHSetAllDisabledTemporarily then
+				print("|cffff0000[AttuneHelper]|r /ahsetall is temporarily disabled due to a known AHSet GUID save issue.")
+				return
+			end
 			AH.SetAHSetToEquipped()
 		end,
 		timeout = 0,

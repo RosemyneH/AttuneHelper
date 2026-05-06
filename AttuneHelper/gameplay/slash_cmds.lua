@@ -1,6 +1,12 @@
 -- ʕ •ᴥ•ʔ✿ Gameplay · Slash commands ✿ ʕ •ᴥ•ʔ
 local AH = _G.AttuneHelper
 
+AH.AHSetAllDisabledTemporarily = true
+
+local function PrintAHSetAllTemporarilyDisabled()
+    print("|cffff0000[AttuneHelper]|r /ahsetall is temporarily disabled due to a known AHSet GUID save issue. Use targeted /ahset item assignment for now.")
+end
+
 function AH.PrintSavedVarsFootprint()
     local function countPairs(t)
         if type(t) ~= "table" then return 0 end
@@ -107,12 +113,6 @@ end
 ------------------------------------------------------------------------
 -- /AHSet command
 ------------------------------------------------------------------------
-AH.AHSetAllDisabledTemporarily = true
-
-local function PrintAHSetAllTemporarilyDisabled()
-    print("|cffff0000[AttuneHelper]|r /ahsetall is temporarily disabled due to a known AHSet GUID save issue. Use targeted /ahset item assignment for now.")
-end
-
 SLASH_AHSET1 = "/AHSet"
 SlashCmdList["AHSET"] = function(msg)
     local itemLinkPart = msg:match("^%s*(.-)%s*$")

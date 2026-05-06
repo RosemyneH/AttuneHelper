@@ -1550,17 +1550,29 @@ function AH.SetupMainButtonHandlers()
         GameTooltip:Hide()
     end)
 
-    -- ʕ •ᴥ•ʔ✿ Update AHSet Button - makes AHSet equal to currently equiped items ✿ ʕ •ᴥ•ʔ
+    -- ʕ •ᴥ•ʔ✿ Update AHSet Button (temporarily repurposed while /ahsetall is disabled) ✿ ʕ •ᴥ•ʔ
     AH.UI.buttons.AHSetUpdate:SetScript("OnClick", function()
+        if AH.AHSetAllDisabledTemporarily then
+            local ok, newPreset = AH.SwitchToNextAHPreset and AH.SwitchToNextAHPreset()
+            if ok and newPreset then
+                print(string.format("|cff00ff00[AttuneHelper]|r Active AHSet preset: %s", tostring(newPreset)))
+            end
+            return
+        end
         StaticPopup_Show("ATTUNEHELPER_CONFIRM_UPDATE_AHSET")
     end)
 
     -- Update AHSet Button tooltip
     AH.UI.buttons.AHSetUpdate:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(AH.t("Update AHSet"))
-        GameTooltip:AddLine(AH.t("Sets AHSet to be equal to your currently equiped items."), 1, 1, 1, true)
-        GameTooltip:AddLine(AH.t("This will delete your current AHSet."), 0.7, 0.7, 0.7, true)
+        if AH.AHSetAllDisabledTemporarily then
+            GameTooltip:SetText(AH.t("Next AHSet Preset"))
+            GameTooltip:AddLine(AH.t("Switches to the next AHSet preset in order."), 1, 1, 1, true)
+        else
+            GameTooltip:SetText(AH.t("Update AHSet"))
+            GameTooltip:AddLine(AH.t("Sets AHSet to be equal to your currently equiped items."), 1, 1, 1, true)
+            GameTooltip:AddLine(AH.t("This will delete your current AHSet."), 0.7, 0.7, 0.7, true)
+        end
         GameTooltip:Show()
     end)
     AH.UI.buttons.AHSetUpdate:SetScript("OnLeave", function()
