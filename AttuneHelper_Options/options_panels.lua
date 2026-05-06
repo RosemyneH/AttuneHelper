@@ -1944,14 +1944,26 @@ function AH.CreateListManagementPanel(mainPanel)
     matchEquippedBtn:SetPoint("LEFT", delPresetBtn, "RIGHT", 6, 0)
     matchEquippedBtn:SetScript("OnEnter", function(s)
         GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Set AHSet (/ahsetall)", 1, 1, 1)
-        GameTooltip:AddLine("After confirmation, copies your equipped items into this preset.", 0.75, 0.75, 0.75, true)
+        if AH.AHSetAllDisabledTemporarily then
+            GameTooltip:SetText("Set AHSet (/ahsetall) [Temporarily Disabled]", 1, 0.3, 0.3)
+            GameTooltip:AddLine("Disabled due to a known AHSet GUID save issue. Use targeted /ahset item assignment for now.", 0.8, 0.8, 0.8, true)
+        else
+            GameTooltip:SetText("Set AHSet (/ahsetall)", 1, 1, 1)
+            GameTooltip:AddLine("After confirmation, copies your equipped items into this preset.", 0.75, 0.75, 0.75, true)
+        end
         GameTooltip:Show()
     end)
     matchEquippedBtn:SetScript("OnLeave", GameTooltip_Hide)
     matchEquippedBtn:SetScript("OnClick", function()
+        if AH.AHSetAllDisabledTemporarily then
+            print("|cffff0000[AttuneHelper]|r /ahsetall is temporarily disabled due to a known AHSet GUID save issue.")
+            return
+        end
         StaticPopup_Show("ATTUNEHELPER_CONFIRM_UPDATE_AHSET")
     end)
+    if AH.AHSetAllDisabledTemporarily then
+        matchEquippedBtn:Disable()
+    end
 
     local mainBand = CreateFrame("Frame", nil, content)
     mainBand:SetHeight(752)
