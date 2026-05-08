@@ -314,7 +314,7 @@ SlashCmdList["AHSET"] = function(msg)
         end
         AHSetList[identifier] = targetSlotName
         AHSetList[itemName] = nil
-        print("|cffffd200[AttuneHelper]|r '" .. itemName .. "' added to AHSet, designated for slot " .. targetSlotName .. ".")
+        print("|cffffd200[AttuneHelper]|r " .. string.format(AH.t("'%s' added to AHSet, designated for slot %s."), itemName, targetSlotName))
         for i = 0, 4 do
             AH.UpdateBagCache(i)
         end

@@ -159,14 +159,63 @@ local enUS = {
     ["Hide Center Button in Normal Mode"]                                             = "Hide Center Button in Normal Mode",
     ["Hides the center action button in normal view."]                                = "Hides the center action button in normal view.",
     ["Hold Ctrl to show Open Settings and Update AHSet."]                             =
-    "Hold Ctrl to show Open Settings and Update AHSet."
+    "Hold Ctrl to show Open Settings and Update AHSet.",
+    ["Sell Attuned Mythic Gear?"]                                                     = "Sell Attuned Mythic Gear?",
+    ["Auto Equip Attunables Automaticly"]                                             = "Auto Equip Attunables Automaticly",
+    ["Do Not Sell BoE Items"]                                                         = "Do Not Sell BoE Items",
+    ["Do Not Sell Grey And White Items"]                                              = "Do Not Sell Grey And White Items",
+    ["Limit Selling to 12 Items?"]                                                    = "Limit Selling to 12 Items?",
+    ["Disable Auto-Equip Mythic BoE"]                                                 = "Disable Auto-Equip Mythic BoE",
+    ["Equip BoE Bountied Items"]                                                      = "Equip BoE Bountied Items",
+    ["Prioritize Low iLvl for Auto-Equip"]                                            = "Prioritize Low iLvl for Auto-Equip",
+    ["Enable Vendor Sell Confirmation Dialog"]                                        = "Enable Vendor Sell Confirmation Dialog",
+    ["Vendor preview on Right (Default On)"]                                          = "Vendor preview on Right (Default On)",
+    ["Draggable by Right Click"]                                                      = "Draggable by Right Click",
+    ["Lock AH in Place (Buttons Only Mouse)"]                                         = "Lock AH in Place (Buttons Only Mouse)",
+    ["Use Bag 1 for Disenchant"]                                                      = "Use Bag 1 for Disenchant",
+    ["This setting is recommended to be off due to the fact that disenchanting Mythic Gear results in honor and arena points."] =
+    "This setting is recommended to be off due to the fact that disenchanting Mythic Gear results in honor and arena points.",
+    ["With this setting off, it will not vendor non-BoP white/grey items if the item can be attuned."] =
+    "With this setting off, it will not vendor non-BoP white/grey items if the item can be attuned.",
+    ["Quick rules:"]                                                                  = "Quick rules:",
+    ["- Below selected tier: lenient."]                                               = "- Below selected tier: lenient.",
+    ["- Existing variant: only higher tier can equip."]                               = "- Existing variant: only higher tier can equip.",
+    ["Example (Warforged):"]                                                          = "Example (Warforged):",
+    ["- Warforged duplicate: blocked. (Max 1)"]                                       = "- Warforged duplicate: blocked. (Max 1)",
+    ["- Lightforged: can still equip. (Max 1)"]                                       = "- Lightforged: can still equip. (Max 1)",
+    ["- 'All Items': strict at all tiers."]                                           = "- 'All Items': strict at all tiers.",
+    ["Drag an item here to assign its slot in AHSet."]                                = "Drag an item here to assign its slot in AHSet.",
+    ["Empty slot — drag an item here, Set AHSet, or /ahset."]                         = "Empty slot — drag an item here, Set AHSet, or /ahset.",
+    ["Drag an item and left-click to add it to AHIgnore."]                            = "Drag an item and left-click to add it to AHIgnore.",
+    ["Right-click to remove from this preset."]                                        = "Right-click to remove from this preset.",
+    ["Item ID %s"]                                                                     = "Item ID %s",
+    ["Enter a name for the new AHSet preset:"]                                         = "Enter a name for the new AHSet preset:",
+    ["A preset with that name already exists."]                                        = "A preset with that name already exists.",
+    ["Invalid preset name."]                                                           = "Invalid preset name.",
+    ["Delete AHSet preset \"%s\"?"]                                                    = "Delete AHSet preset \"%s\"?",
+    ["List Management"]                                                                = "List Management",
+    ["AHSet is stored per character (GUID). Presets swap the saved item-to-slot map. AHIgnore / Always Vendored are account-wide."] =
+    "AHSet is stored per character (GUID). Presets swap the saved item-to-slot map. AHIgnore / Always Vendored are account-wide.",
+    ["AHSet preset"]                                                                   = "AHSet preset",
+    ["New"]                                                                            = "New",
+    ["Delete"]                                                                         = "Delete",
+    ["Set AHSet"]                                                                      = "Set AHSet",
+    ["Set AHSet (/ahsetall)"]                                                          = "Set AHSet (/ahsetall)",
+    ["After confirmation, copies your equipped items into this preset."]               = "After confirmation, copies your equipped items into this preset.",
+    ["Option control arrays initialized"]                                              = "Option control arrays initialized",
+    ["Options panels initialized successfully"]                                        = "Options panels initialized successfully",
+    ["'%s' added to AHSet, designated for slot %s."]                                   = "'%s' added to AHSet, designated for slot %s.",
+    ["'%s' (ID: %s) added to AHSet, designated for slot %s."]                          = "'%s' (ID: %s) added to AHSet, designated for slot %s."
 }
 
 
+-- Non-English locales: preloaded via TOC into _G.AH_LOCALES
 ------------------------------------------------------------------------
--- Non-English locales: loaded on demand via loadfile (see Locales/*.lua)
-------------------------------------------------------------------------
-AH._localeOverlaysByFile = AH._localeOverlaysByFile or {}
+local PRELOADED_LOCALES = _G.AH_LOCALES
+if type(PRELOADED_LOCALES) ~= "table" then
+    PRELOADED_LOCALES = {}
+    _G.AH_LOCALES = PRELOADED_LOCALES
+end
 
 local function resolveLocaleFileCode(localeCode)
     if localeCode == "ptPT" then return "ptBR" end
@@ -178,29 +227,9 @@ end
 local function loadLocaleOverlayForCode(localeCode)
     local fileCode = resolveLocaleFileCode(localeCode)
     if not fileCode then return nil end
-    local cached = AH._localeOverlaysByFile[fileCode]
-    if cached == false then return nil end
-    if type(cached) == "table" then return cached end
-    local paths = {
-        "Interface\\AddOns\\AttuneHelper\\Locales\\" .. fileCode .. ".lua",
-        "Interface/AddOns/AttuneHelper/Locales/" .. fileCode .. ".lua",
-    }
-    local chunk
-    for _, p in ipairs(paths) do
-        chunk = loadfile(p)
-        if chunk then break end
-    end
-    if not chunk then
-        AH._localeOverlaysByFile[fileCode] = false
-        return nil
-    end
-    local ok, tbl = pcall(chunk)
-    if not ok or type(tbl) ~= "table" then
-        AH._localeOverlaysByFile[fileCode] = false
-        return nil
-    end
-    AH._localeOverlaysByFile[fileCode] = tbl
-    return tbl
+    local tbl = PRELOADED_LOCALES[fileCode]
+    if type(tbl) == "table" then return tbl end
+    return nil
 end
 
 ------------------------------------------------------------------------

@@ -1955,7 +1955,7 @@ function AH.AssignItemToAHSetSlot(identifier, itemName, targetSlotName, itemLink
     end
 
     AHSetList[identifier] = targetSlotName
-    print("|cffffd200[AttuneHelper]|r '" .. itemName .. "' added to AHSet, designated for slot " .. targetSlotName .. ".")
+    print("|cffffd200[AttuneHelper]|r " .. string.format(AH.t("'%s' added to AHSet, designated for slot %s."), itemName, targetSlotName))
 
     for i = 0, 4 do
         AH.UpdateBagCache(i)
@@ -2201,8 +2201,7 @@ function AH.SetAHSetToEquipped()
                 if legacyIdentifier and not guidSig then
                     AHSetList[legacyIdentifier] = slotName
                 end
-                print("|cffffd200[AH]|r '" .. equippedItemName .. "' (ID: " .. tostring(eqID) ..
-                    ") added to AHSet, designated for slot " .. slotName .. ".")
+                print("|cffffd200[AH]|r " .. string.format(AH.t("'%s' (ID: %s) added to AHSet, designated for slot %s."), equippedItemName, tostring(eqID), slotName))
             end
         end
     end

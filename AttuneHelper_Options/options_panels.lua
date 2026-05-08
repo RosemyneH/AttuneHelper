@@ -200,7 +200,7 @@ local function EnsureAHSetPresetPopups(onDataChanged)
         return
     end
     StaticPopupDialogs["ATTUNEHELPER_NEW_AHSET_PRESET"] = {
-        text = "Enter a name for the new AHSet preset:",
+        text = AH.t("Enter a name for the new AHSet preset:"),
         button1 = OKAY,
         button2 = CANCEL,
         hasEditBox = 1,
@@ -215,9 +215,9 @@ local function EnsureAHSetPresetPopups(onDataChanged)
             local ok, reason = AH.CreateAHPreset(self.editBox:GetText())
             if not ok then
                 if reason == "duplicate" then
-                    print("|cffff0000[AttuneHelper]|r A preset with that name already exists.")
+                    print("|cffff0000[AttuneHelper]|r " .. AH.t("A preset with that name already exists."))
                 elseif reason == "invalid" then
-                    print("|cffff0000[AttuneHelper]|r Invalid preset name.")
+                    print("|cffff0000[AttuneHelper]|r " .. AH.t("Invalid preset name."))
                 end
             elseif onDataChanged then
                 onDataChanged()
@@ -229,7 +229,7 @@ local function EnsureAHSetPresetPopups(onDataChanged)
     }
 
     StaticPopupDialogs["ATTUNEHELPER_DELETE_AHSET_PRESET"] = {
-        text = "Delete AHSet preset \"%s\"?",
+        text = AH.t("Delete AHSet preset \"%s\"?"),
         button1 = DELETE,
         button2 = CANCEL,
         OnShow = function(self)
@@ -438,18 +438,18 @@ local function CreateAHSetPaperdollSlot(parent, slotName, x, y, slotSize)
                 local r, g, b = GetItemQualityColor(tonumber(quality) or 0)
                 GameTooltip:SetText(disp, r, g, b)
                 if itemId then
-                    GameTooltip:AddLine("Item ID " .. tostring(itemId), 0.55, 0.55, 0.55, false)
+                    GameTooltip:AddLine(string.format(AH.t("Item ID %s"), tostring(itemId)), 0.55, 0.55, 0.55, false)
                 end
             end
             GameTooltip:AddLine(slotLabel, 0.75, 0.85, 1, false)
-            GameTooltip:AddLine("Right-click to remove from this preset.", 0.55, 0.85, 1, true)
+            GameTooltip:AddLine(AH.t("Right-click to remove from this preset."), 0.55, 0.85, 1, true)
         else
             GameTooltip:SetText(slotLabel, 1, 1, 1)
             if self.slotName == prepMHS or self.slotName == prepOHS then
                 GameTooltip:AddLine(AH.t("AHSet prep paper strip drag hint"), 1, 0.82, 0.18, true)
                 GameTooltip:AddLine(AH.t("AHSet prep slot empty slash hint"), 0.55, 0.55, 0.6, true)
             else
-                GameTooltip:AddLine("Empty slot — drag an item here, Set AHSet, or /ahset.", 0.65, 0.65, 0.7, true)
+                GameTooltip:AddLine(AH.t("Empty slot — drag an item here, Set AHSet, or /ahset."), 0.65, 0.65, 0.7, true)
             end
         end
         GameTooltip:Show()
@@ -677,7 +677,7 @@ local function RefreshManagedListSection(section)
                     else
                         GameTooltip:SetText(tipName, tipR, tipG, tipB)
                         if id then
-                            GameTooltip:AddLine("Item ID " .. tostring(id), 0.55, 0.55, 0.55, false)
+                            GameTooltip:AddLine(string.format(AH.t("Item ID %s"), tostring(id)), 0.55, 0.55, 0.55, false)
                         end
                     end
                     GameTooltip:Show()
@@ -1131,9 +1131,6 @@ function AH.__loadAllSettingsFull()
             ["itIT"] = AH.t("Italiano"),
             ["ptBR"] = AH.t("Português (BR)"),
             ["ruRU"] = AH.t("Русский"),
-            ["zhCN"] = AH.t("简体中文"),
-            ["zhTW"] = AH.t("繁體中文"),
-            ["koKR"] = AH.t("한국어"),
         }
         UIDropDownMenu_SetSelectedValue(AH.language_option_controls.dropdown, sel)
         UIDropDownMenu_SetText(AH.language_option_controls.dropdown, textMap[sel] or sel)
@@ -1622,9 +1619,6 @@ function AH.InitializeThemeOptions()
         { code = "itIT",    text = AH.t("Italiano") },
         { code = "ptBR",    text = AH.t("Português (BR)") },
         { code = "ruRU",    text = AH.t("Русский") },
-        { code = "zhCN",    text = AH.t("简体中文") },
-        { code = "zhTW",    text = AH.t("繁體中文") },
-        { code = "koKR",    text = AH.t("한국어") },
     }
 
     UIDropDownMenu_Initialize(langDDT, function(self)
@@ -1868,11 +1862,11 @@ function AH.CreateListManagementPanel(mainPanel)
 
     local title = listPanel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 16, -16)
-    title:SetText("List Management")
+    title:SetText(AH.t("List Management"))
 
     local subtitle = listPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
-    subtitle:SetText("AHSet is stored per character (GUID). Presets swap the saved item-to-slot map. AHIgnore / Always Vendored are account-wide.")
+    subtitle:SetText(AH.t("AHSet is stored per character (GUID). Presets swap the saved item-to-slot map. AHIgnore / Always Vendored are account-wide."))
 
     local function refreshPresetDropdown(dd)
         if not dd then
@@ -1918,7 +1912,7 @@ function AH.CreateListManagementPanel(mainPanel)
 
     local presetRowLabel = presetHead:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     presetRowLabel:SetPoint("TOP", presetHead, "TOP", 0, -6)
-    presetRowLabel:SetText("AHSet preset")
+    presetRowLabel:SetText(AH.t("AHSet preset"))
 
     local presetDD = CreateFrame("Frame", "AttuneHelperAHPresetDropdown", presetHead, "UIDropDownMenuTemplate")
     presetDD:SetPoint("TOP", presetRowLabel, "BOTTOM", 0, -6)
@@ -1929,23 +1923,23 @@ function AH.CreateListManagementPanel(mainPanel)
 
     local newPresetBtn = CreateFrame("Button", nil, presetHead, "UIPanelButtonTemplate")
     newPresetBtn:SetSize(60, 20)
-    newPresetBtn:SetText("New")
+    newPresetBtn:SetText(AH.t("New"))
 
     local delPresetBtn = CreateFrame("Button", nil, presetHead, "UIPanelButtonTemplate")
     delPresetBtn:SetSize(60, 20)
-    delPresetBtn:SetText("Delete")
+    delPresetBtn:SetText(AH.t("Delete"))
 
     local matchEquippedBtn = CreateFrame("Button", nil, presetHead, "UIPanelButtonTemplate")
     matchEquippedBtn:SetSize(96, 20)
-    matchEquippedBtn:SetText("Set AHSet")
+    matchEquippedBtn:SetText(AH.t("Set AHSet"))
     local presetBtnRowWidth = 60 + 4 + 60 + 6 + 96
     newPresetBtn:SetPoint("LEFT", presetBtnRowAnchor, "CENTER", -math.floor(presetBtnRowWidth / 2), 0)
     delPresetBtn:SetPoint("LEFT", newPresetBtn, "RIGHT", 4, 0)
     matchEquippedBtn:SetPoint("LEFT", delPresetBtn, "RIGHT", 6, 0)
     matchEquippedBtn:SetScript("OnEnter", function(s)
         GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Set AHSet (/ahsetall)", 1, 1, 1)
-        GameTooltip:AddLine("After confirmation, copies your equipped items into this preset.", 0.75, 0.75, 0.75, true)
+        GameTooltip:SetText(AH.t("Set AHSet (/ahsetall)"), 1, 1, 1)
+        GameTooltip:AddLine(AH.t("After confirmation, copies your equipped items into this preset."), 0.75, 0.75, 0.75, true)
         GameTooltip:Show()
     end)
     matchEquippedBtn:SetScript("OnLeave", GameTooltip_Hide)
@@ -2675,7 +2669,7 @@ function AH.InitializeOptionControls()
     AH.theme_option_controls = {}
     AH.button_layout_option_controls = {}
     
-    print("|cff00ff00[AttuneHelper]|r Option control arrays initialized")
+    print("|cff00ff00[AttuneHelper]|r " .. AH.t("Option control arrays initialized"))
 end
 
 ------------------------------------------------------------------------
@@ -2720,7 +2714,7 @@ function AH.InitializeAllOptions()
         AH.EnsureInterfaceOptionsTransientStrataHooks()
     end
     
-    print("|cff00ff00[AttuneHelper]|r Options panels initialized successfully")
+    print("|cff00ff00[AttuneHelper]|r " .. AH.t("Options panels initialized successfully"))
 end
 
 _G.SaveAllSettings = AH.SaveAllSettings
