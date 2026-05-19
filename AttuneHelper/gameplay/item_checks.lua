@@ -1,30 +1,24 @@
 -- ʕ •ᴥ•ʔ✿ Gameplay · Item checks  ✿ ʕ •ᴥ•ʔ
 local AH = _G.AttuneHelper
+local CustomAPI = AH.CustomAPI or {}
 
 ------------------------------------------------------------------------
 -- Actively leveling?
 ------------------------------------------------------------------------
 function AH.ItemIsActivelyLeveling(itemId, itemLink)
     if not itemLink then
-        --AH.print_debug_general("ItemIsActivelyLeveling: itemLink required. ItemId="..tostring(itemId))
         return false
     end
     if not itemId then itemId = AH.GetItemIDFromLink(itemLink) end
     if not itemId then return false end
 
     -- Can this item even be attuned?
-    if _G.CanAttuneItemHelper and CanAttuneItemHelper(itemId) ~= 1 then
+    if CustomAPI.CanAttuneItem(itemId) ~= 1 then
         return false
     end
 
-    if not _G.GetItemLinkAttuneProgress then
-        --AH.print_debug_general("ItemIsActivelyLeveling: GetItemLinkAttuneProgress missing for "..itemLink)
-        return false
-    end
-
-    local progress = GetItemLinkAttuneProgress(itemLink)
+    local progress = CustomAPI.GetItemLinkAttuneProgress(itemLink)
     if type(progress) ~= "number" then
-        --AH.print_debug_general("ItemIsActivelyLeveling: progress not number for "..itemLink.." -> "..tostring(progress))
         return false
     end
 
@@ -66,16 +60,14 @@ function AH.ItemQualifiesForBagEquip(itemId, itemLink, isEquipNewAffixesOnlyEnab
         return cached
     end
 
-    if not _G.CanAttuneItemHelper or CanAttuneItemHelper(itemId) ~= 1 then
+    if CustomAPI.CanAttuneItem(itemId) ~= 1 then
         qualifyCache[cacheKey] = false
         return false
     end
 
     local progress = 100
-    if _G.GetItemLinkAttuneProgress then
-        local p = GetItemLinkAttuneProgress(itemLink)
-        if type(p) == "number" then progress = p end
-    end
+    local p = CustomAPI.GetItemLinkAttuneProgress(itemLink)
+    if type(p) == "number" then progress = p end
     if progress >= 100 then
         qualifyCache[cacheKey] = false
         return false
@@ -157,10 +149,8 @@ function AH.ShouldPrioritizeItem(item1Link, item2Link)
     if forge1 ~= forge2 then return forge1 > forge2 end
 
     local p1,p2=0,0
-    if _G.GetItemLinkAttuneProgress then
-        p1 = GetItemLinkAttuneProgress(item1Link) or 0
-        p2 = GetItemLinkAttuneProgress(item2Link) or 0
-    end
+    p1 = CustomAPI.GetItemLinkAttuneProgress(item1Link) or 0
+    p2 = CustomAPI.GetItemLinkAttuneProgress(item2Link) or 0
     return p1 < p2
 end
-_G.ShouldPrioritizeItem = AH.ShouldPrioritizeItem 
+_G.ShouldPrioritizeItem = AH.ShouldPrioritizeItem

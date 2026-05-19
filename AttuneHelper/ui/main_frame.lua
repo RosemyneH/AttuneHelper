@@ -130,7 +130,6 @@ function AH.CreateMainFrame()
                 frame:SetPoint(pos[1], UIParent, pos[3], pos[4], pos[5])
             end)
             if not success then
-                --AH.print_debug_general("Failed to restore frame position, using default: " .. tostring(err))
                 frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
                 AttuneHelperDB.FramePosition = { "CENTER", UIParent, "CENTER", 0, 0 }
             end

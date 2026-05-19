@@ -1,10 +1,11 @@
 -- ʕ •ᴥ•ʔ✿ Gameplay · Equip logic & policies ✿ ʕ •ᴥ•ʔ
 local AH = _G.AttuneHelper
 local flags = AH.flags or {}
+local CustomAPI = AH.CustomAPI or {}
 
 AH.prepareDisenchantInProgress = false
 
-AH.synastriaDataReady = (GetCustomGameData(41, 0) ~= 0)
+AH.synastriaDataReady = ((CustomAPI.GetGameData(41, 0) or 0) ~= 0)
 
 -- ʕ •ᴥ•ʔ✿ Recently equipped items tracking to prevent immediate re-equipping ✿ ʕ •ᴥ•ʔ
 local recentlyEquippedItems = {}
@@ -234,7 +235,7 @@ function AH.CanEquipItemPolicyCheck(candidateRec)
         return false
     end
 
-    if not AH.synastriaDataReady and GetCustomGameData(41, 0) ~= 0 then
+    if not AH.synastriaDataReady and (CustomAPI.GetGameData(41, 0) or 0) ~= 0 then
         AH.synastriaDataReady = true
     end
 
@@ -266,8 +267,8 @@ function AH.CanEquipItemPolicyCheck(candidateRec)
 
                 local bounty = candidateRec.bountyValue
                 if bounty == nil and AH.synastriaDataReady then
-                    local ok, v = pcall(GetCustomGameData, 31, itemId)
-                    bounty = (ok and type(v) == "number") and v or 0
+                    local v = CustomAPI.GetGameData(31, itemId)
+                    bounty = type(v) == "number" and v or 0
                 end
                 if AH.synastriaDataReady and (bounty or 0) > 0 and AttuneHelperDB["Equip BoE Bountied Items"] ~= 1 then
                     result = false
@@ -801,10 +802,7 @@ function AH.TryPrepAhsetOneHandMainHandFromTwoHander()
 end
 
 local function GetAttuneProgressForLink(itemLink)
-    if not itemLink or not _G.GetItemLinkAttuneProgress then
-        return nil
-    end
-    local p = GetItemLinkAttuneProgress(itemLink)
+    local p = CustomAPI.GetItemLinkAttuneProgress(itemLink)
     if type(p) ~= "number" then
         return nil
     end
@@ -819,7 +817,7 @@ local function IsAttunableFullyAttuned(itemLink)
     if not itemId then
         return false
     end
-    if not _G.CanAttuneItemHelper or CanAttuneItemHelper(itemId) ~= 1 then
+    if CustomAPI.CanAttuneItem(itemId) ~= 1 then
         return false
     end
     local progress = GetAttuneProgressForLink(itemLink)
@@ -1178,16 +1176,6 @@ function AH.EquipAllAttunables()
             -- ʕ •ᴥ•ʔ✿ Use cached GetItemInfo ✿ ʕ •ᴥ•ʔ
             equippedItemName, equippedItemEquipLoc = GetCachedItemInfoForEquip(equippedItemLink)
             if equippedItemId then
-
-                -- ʕ •ᴥ•ʔ✿ Enhanced debugging for actively leveling check ✿ ʕ •ᴥ•ʔ
-                if _G.CanAttuneItemHelper then
-                    local canAttune = CanAttuneItemHelper(equippedItemId)
-                end
-
-                if _G.GetItemLinkAttuneProgress then
-                    local progress = GetItemLinkAttuneProgress(equippedItemLink)
-                end
-
                 isEquippedItemActivelyLevelingFlag = AH.ItemIsActivelyLeveling(equippedItemId, equippedItemLink)
             end
         else
@@ -1613,13 +1601,9 @@ function AH.SortInventoryItems()
         local isSoulbound = AH.IsSoulboundFromNativeBagSlot(bag, slot)
 
         local progress = 0
-        if _G.GetItemLinkAttuneProgress then
-            local progressResult = GetItemLinkAttuneProgress(itemLink)
-            if type(progressResult) == "number" then
-                progress = progressResult
-            else
-                return false, "Cannot determine attunement progress"
-            end
+        local progressResult = CustomAPI.GetItemLinkAttuneProgress(itemLink)
+        if type(progressResult) == "number" then
+            progress = progressResult
         else
             return false, "Attunement API not available"
         end
@@ -1724,9 +1708,7 @@ function AH.SortInventoryItems()
                             -- Items ready for disenchanting (need to move to target bag)
                             table.insert(readyForDisenchant,
                                 { b = b, s = s, id = id, name = name, link = link, fromBank = (b >= 5) })
-                            --AH.print_debug_general("Found disenchant-ready item in bag " .. b .. ": " .. name)
                         else
-                            --AH.print_debug_general("Item '" .. name .. "' not ready for disenchant: " .. reason)
                         end
                     end
                 end
@@ -2180,20 +2162,27 @@ function AH.SetAHSetToEquipped()
     wipe(AHSetList)
     print("|cffffd200[AttuneHelper]|r Deleted previous AHSetList Items.")
 
-    local slotsList = { "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot", "WristSlot",
-        "HandsSlot", "WaistSlot", "LegsSlot", "FeetSlot", "Finger0Slot", "Finger1Slot", "Trinket0Slot", "Trinket1Slot", "MainHandSlot",
-        "SecondaryHandSlot", "RangedSlot" }
+    local slotsList = AH.EQUIPPED_CUSTOM_USER_SLOTS or {}
 
-    for _, slotName in ipairs(slotsList) do
-        local invSlotID = GetInventorySlotInfo(slotName)
-        local eqID = invSlotID and GetInventoryItemID("player", invSlotID) or nil
-        if eqID then
-            local equippedItemLink = GetInventoryItemLink("player", invSlotID)
-            local linkForId = equippedItemLink or ("item:" .. eqID)
+    for _, slotInfo in ipairs(slotsList) do
+        local slotName = slotInfo.slotName
+        local customSlot = slotInfo.customSlot
+        local equippedItemLink = AH.GetItemLinkForEquippedCustomSlot and AH.GetItemLinkForEquippedCustomSlot(customSlot, slotName)
+        local eqID = equippedItemLink and AH.GetItemIDFromLink and AH.GetItemIDFromLink(equippedItemLink)
+
+        if not eqID then
+            local invSlotID = GetInventorySlotInfo(slotName)
+            eqID = invSlotID and GetInventoryItemID("player", invSlotID) or nil
+            if not equippedItemLink and eqID then
+                equippedItemLink = "item:" .. tostring(eqID)
+            end
+        end
+
+        if eqID and equippedItemLink then
             local equippedItemName = AH.GetItemDisplayName and AH.GetItemDisplayName(eqID, equippedItemLink) or GetItemInfo(equippedItemLink)
             if equippedItemName then
-                local identifier = AH.CreateItemIdentifierFromEquippedPaperdoll(linkForId, equippedItemName, slotName)
-                local legacyIdentifier = AH.GetLegacyItemIdentifier(linkForId, equippedItemName)
+                local identifier = AH.CreateItemIdentifierFromEquippedPaperdoll(equippedItemLink, equippedItemName, slotName)
+                local legacyIdentifier = AH.GetLegacyItemIdentifier(equippedItemLink, equippedItemName)
                 local guidSig = AH.GetGuidSignatureFromIdentifier and AH.GetGuidSignatureFromIdentifier(identifier)
                 AHSetList[identifier] = slotName
                 -- Strict safety: if we have a GUID-scoped identifier, do not also
@@ -2206,6 +2195,13 @@ function AH.SetAHSetToEquipped()
         end
     end
 
+    for i = 0, 4 do
+        AH.UpdateBagCache(i)
+    end
+    if AH.RebuildEquipSlotCache then
+        AH.RebuildEquipSlotCache()
+    end
+    AH.UpdateItemCountText()
     if AH.ForceSaveSettings then
         AH.ForceSaveSettings()
     end

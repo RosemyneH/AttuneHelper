@@ -8,11 +8,7 @@ local AH = AttuneHelper
 _G.AH = AH
 
 -- Initialize core structures
-AH.flags = {
-    GENERAL_DEBUG_MODE = false,
-    AHSET_DEBUG_MODE = false,
-    VENDOR_PREVIEW_DEBUG_MODE = false
-}
+AH.flags = {}
 
 -- Initialize UI structure
 AH.UI = {
@@ -44,5 +40,5 @@ AH.merchantWindowOpen = false
 AH._addonName = addonName
 AH._addonTable = addonTable
 
--- Flags sub-table (guaranteed to exist before debug.lua runs) so users can type AH.flags.X = true in chat
+-- Flags sub-table (guaranteed to exist before addon modules run)
 AH.flags = AH.flags or {}

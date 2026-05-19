@@ -18,10 +18,6 @@ if AH then
     -- These point to the new modular functions but maintain the old global names
 
     -- Core functions (from core modules)
-    _G.print_debug_general = AH.print_debug_general
-    _G.print_debug = AH.print_debug_general -- Alias for backward compatibility
-    _G.print_debug_ahset = AH.print_debug_ahset
-    _G.print_debug_vendor_preview = AH.print_debug_vendor_preview
     _G.IsMythic = AH.IsMythic
     _G.GetItemIDFromLink = AH.GetItemIDFromLink
     _G.GetForgeLevelFromLink = AH.GetForgeLevelFromLink
@@ -88,31 +84,31 @@ if AH then
             _G.AttuneHelperMiniFrame = AH.UI.miniFrame
             
             if AH.UI.buttons then
-				_G.EquipAllButton =  AH.UI.buttons.equipAll
-				_G.AHSetUpdateButton = AH.UI.buttons.AHSetUpdate
-				_G.VendorAttunedButton = AH.UI.buttons.vendor
-				_G.ToggleAutoEquipButton = AH.UI.buttons.toggleAutoEquip
-				_G.SettingsButton = AH.UI.buttons.openSettings
-				_G.SortInventoryButton = AH.UI.buttons.sort
-				_G.EquipAHSetButton = AH.UI.buttons.equipAHSet
-				_G.NextAHPresetButton = AH.UI.buttons.nextAHPreset
-				_G.AttuneHelperEquipAllButton =  AH.UI.buttons.equipAll
-				_G.AttuneHelperAHSetUpdateButton = AH.UI.buttons.AHSetUpdate
-				_G.AttuneHelperVendorAttunedButton = AH.UI.buttons.vendor
-				_G.AttuneHelperToggleAutoEquipButton = AH.UI.buttons.toggleAutoEquip
-				_G.AttuneHelperSettingsButton = AH.UI.buttons.openSettings
-				_G.AttuneHelperSortInventoryButton = AH.UI.buttons.sort
-				_G.AttuneHelperEquipAHSetButton = AH.UI.buttons.equipAHSet
-				_G.AttuneHelperNextAHPresetButton = AH.UI.buttons.nextAHPreset
+                _G.EquipAllButton =  AH.UI.buttons.equipAll
+                _G.AHSetUpdateButton = AH.UI.buttons.AHSetUpdate
+                _G.VendorAttunedButton = AH.UI.buttons.vendor
+                _G.ToggleAutoEquipButton = AH.UI.buttons.toggleAutoEquip
+                _G.SettingsButton = AH.UI.buttons.openSettings
+                _G.SortInventoryButton = AH.UI.buttons.sort
+                _G.EquipAHSetButton = AH.UI.buttons.equipAHSet
+                _G.NextAHPresetButton = AH.UI.buttons.nextAHPreset
+                _G.AttuneHelperEquipAllButton =  AH.UI.buttons.equipAll
+                _G.AttuneHelperAHSetUpdateButton = AH.UI.buttons.AHSetUpdate
+                _G.AttuneHelperVendorAttunedButton = AH.UI.buttons.vendor
+                _G.AttuneHelperToggleAutoEquipButton = AH.UI.buttons.toggleAutoEquip
+                _G.AttuneHelperSettingsButton = AH.UI.buttons.openSettings
+                _G.AttuneHelperSortInventoryButton = AH.UI.buttons.sort
+                _G.AttuneHelperEquipAHSetButton = AH.UI.buttons.equipAHSet
+                _G.AttuneHelperNextAHPresetButton = AH.UI.buttons.nextAHPreset
             end
             
             if AH.UI.miniButtons then
                 _G.AttuneHelperMiniEquipButton = AH.UI.miniButtons.equipAll
-				_G.AttuneHelperMiniAHSetUpdateButton = AH.UI.miniButtons.AHSetUpdate
+                _G.AttuneHelperMiniAHSetUpdateButton = AH.UI.miniButtons.AHSetUpdate
                 _G.AttuneHelperMiniVendorButton = AH.UI.miniButtons.vendor
-				
-				_G.AttuneHelperMiniToggleAutoEquipButton = AH.UI.miniButtons.toggleAutoEquip
-				_G.AttuneHelperMiniSettingsButton = AH.UI.miniButtons.openSettings
+
+                _G.AttuneHelperMiniToggleAutoEquipButton = AH.UI.miniButtons.toggleAutoEquip
+                _G.AttuneHelperMiniSettingsButton = AH.UI.miniButtons.openSettings
                 _G.AttuneHelperMiniSortButton = AH.UI.miniButtons.sort
                 _G.AttuneHelperMiniEquipAHSetButton = AH.UI.miniButtons.equipAHSet
                 _G.AttuneHelperMiniNextAHPresetButton = AH.UI.miniButtons.nextAHPreset

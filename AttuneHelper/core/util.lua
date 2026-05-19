@@ -2,6 +2,70 @@
 local AH = _G.AttuneHelper
 local flags = AH.flags or {}
 
+local CustomAPI = AH.CustomAPI or {}
+AH.CustomAPI = CustomAPI
+
+function CustomAPI.GetItemGuidPair(serverBag, serverSlot)
+    local fn = _G.Custom_GetItemGuid
+    if type(fn) ~= "function" or serverBag == nil or serverSlot == nil then
+        return nil, nil
+    end
+    return fn(serverBag, serverSlot)
+end
+
+function CustomAPI.GetItemLinkBySlot(serverBag, serverSlot)
+    local fn = _G.Custom_GetItemLinkBySlot
+    if type(fn) ~= "function" or serverBag == nil or serverSlot == nil then
+        return nil
+    end
+    local result = fn(serverBag, serverSlot)
+    if result and result ~= "" then
+        return result
+    end
+    return nil
+end
+
+function CustomAPI.IsItemSoulbound(serverBag, serverSlot)
+    local fn = _G.Custom_IsItemSoulbound
+    if type(fn) ~= "function" or serverBag == nil or serverSlot == nil then
+        return false
+    end
+    local result = fn(serverBag, serverSlot)
+    return result == true or result == 1
+end
+
+function CustomAPI.IsItemEquipMgr(serverBag, serverSlot)
+    local fn = _G.Custom_IsItemEquipMgr
+    if type(fn) ~= "function" or serverBag == nil or serverSlot == nil then
+        return false
+    end
+    return fn(serverBag, serverSlot) == 1
+end
+
+function CustomAPI.CanAttuneItem(itemID)
+    local fn = _G.CanAttuneItemHelper
+    if type(fn) ~= "function" or not itemID then
+        return nil
+    end
+    return fn(itemID)
+end
+
+function CustomAPI.GetItemLinkAttuneProgress(itemLink)
+    local fn = _G.GetItemLinkAttuneProgress
+    if type(fn) ~= "function" or not itemLink then
+        return nil
+    end
+    return fn(itemLink)
+end
+
+function CustomAPI.GetGameData(dataType, itemID)
+    local fn = _G.GetCustomGameData
+    if type(fn) ~= "function" or dataType == nil or itemID == nil then
+        return nil
+    end
+    return fn(dataType, itemID)
+end
+
 function AH.CompressItemGuidSignature(lo, hi)
     if lo == nil or hi == nil then
         return nil
@@ -14,42 +78,81 @@ function AH.CompressItemGuidSignature(lo, hi)
     return string.format("g%x_%x", lo, hi)
 end
 
+AH.EQUIPPED_CUSTOM_USER_SLOTS = {
+    { customSlot = 0, slotName = "HeadSlot" },
+    { customSlot = 1, slotName = "NeckSlot" },
+    { customSlot = 2, slotName = "ShoulderSlot" },
+    { customSlot = 4, slotName = "ChestSlot" },
+    { customSlot = 5, slotName = "WaistSlot" },
+    { customSlot = 6, slotName = "LegsSlot" },
+    { customSlot = 7, slotName = "FeetSlot" },
+    { customSlot = 8, slotName = "WristSlot" },
+    { customSlot = 9, slotName = "HandsSlot" },
+    { customSlot = 10, slotName = "Finger0Slot" },
+    { customSlot = 11, slotName = "Finger1Slot" },
+    { customSlot = 12, slotName = "Trinket0Slot" },
+    { customSlot = 13, slotName = "Trinket1Slot" },
+    { customSlot = 14, slotName = "BackSlot" },
+    { customSlot = 15, slotName = "MainHandSlot" },
+    { customSlot = 16, slotName = "SecondaryHandSlot" },
+    { customSlot = 17, slotName = "RangedSlot" },
+}
+
+AH.EQUIPPED_CUSTOM_SLOT_BY_NAME = {}
+for _, slotInfo in ipairs(AH.EQUIPPED_CUSTOM_USER_SLOTS) do
+    AH.EQUIPPED_CUSTOM_SLOT_BY_NAME[slotInfo.slotName] = slotInfo.customSlot
+end
+
 function AH.GetItemGuidPairFromNativeBagSlot(nativeBag, nativeSlot)
-    local cg = _G.Custom_GetItemGuid
-    if type(cg) ~= "function" then
-        return nil, nil
-    end
     local serverBag, serverSlot = AH.NativeToServerBagSlot(nativeBag, nativeSlot)
     if not serverBag then
         return nil, nil
     end
-    local ok, lo, hi = pcall(cg, serverBag, serverSlot)
-    if not ok or lo == nil then
+    local lo, hi = CustomAPI.GetItemGuidPair(serverBag, serverSlot)
+    if lo == nil then
         return nil, nil
     end
     return lo, hi
 end
 
--- ʕ •ᴥ•ʔ✿ WotLK 3.3.5: equipment uses GetInventorySlotInfo + Custom_GetItemGuid (no Retail C_Container.*). ✿ ʕ •ᴥ•ʔ
+function AH.GetItemGuidPairForEquippedCustomSlot(customSlot)
+    local lo, hi = CustomAPI.GetItemGuidPair(255, customSlot)
+    if lo == nil then
+        return nil, nil
+    end
+    return lo, hi
+end
+
+-- ʕ •ᴥ•ʔ✿ WotLK 3.3.5 custom paperdoll uses bag 255 and user slots 0..17. ✿ ʕ •ᴥ•ʔ
 function AH.GetItemGuidPairForEquippedInventorySlot(slotName)
-    local cg = _G.Custom_GetItemGuid
-    if type(cg) ~= "function" or not slotName then
+    if not slotName then
         return nil, nil
     end
-    local invSlot = GetInventorySlotInfo(slotName)
-    if not invSlot then
+    local customSlot = AH.EQUIPPED_CUSTOM_SLOT_BY_NAME and AH.EQUIPPED_CUSTOM_SLOT_BY_NAME[slotName]
+    if customSlot == nil then
         return nil, nil
     end
-    local ok, lo, hi = pcall(cg, 0xFF, invSlot)
-    if ok and lo ~= nil then
-        return lo, hi
-    end
-    if invSlot >= 1 then
-        ok, lo, hi = pcall(cg, 0xFF, invSlot - 1)
-        if ok and lo ~= nil then
-            return lo, hi
+    return AH.GetItemGuidPairForEquippedCustomSlot(customSlot)
+end
+
+function AH.GetItemLinkForEquippedCustomSlot(customSlot, slotName)
+    if customSlot ~= nil then
+        local result = CustomAPI.GetItemLinkBySlot(255, customSlot)
+        if result then
+            return result
         end
     end
+
+    if slotName then
+        local invSlotID = GetInventorySlotInfo(slotName)
+        if invSlotID then
+            local link = GetInventoryItemLink("player", invSlotID)
+            if link and link ~= "" then
+                return link
+            end
+        end
+    end
+
     return nil, nil
 end
 
@@ -241,17 +344,8 @@ function AH.GetAHSetDesignatedSlotForBagRec(rec)
             local exactGuidKey = legacy .. "|" .. recSig
             local strictSlot = AHSetList[exactGuidKey]
             if strictSlot then
-                if AH.print_debug_ahset then
-                    AH.print_debug_ahset("AHSet strict GUID match for " .. tostring(legacy) .. " via key " .. tostring(exactGuidKey))
-                end
                 return strictSlot
             end
-        end
-        if AH.print_debug_ahset then
-            AH.print_debug_ahset(
-                "AHSet strict GUID miss for " .. tostring(legacy) ..
-                " (sig=" .. tostring(recSig or "none") .. ")"
-            )
         end
         return nil
     end
@@ -263,12 +357,6 @@ function AH.GetAHSetDesignatedSlotForBagRec(rec)
         return designated
     end
 
-    if AH.print_debug_ahset then
-        AH.print_debug_ahset(
-            "AHSet miss for bag rec: " .. tostring(name) ..
-            " (" .. tostring(legacy or "no-id") .. ", sig=" .. tostring(recSig or "none") .. ")"
-        )
-    end
     return nil
 end
 
@@ -339,8 +427,8 @@ function AH.CompareItemPriority(itemLink1, itemLink2)
     end
     
     -- Third priority: Lower attunement progress (more room to grow)
-    local progress1 = _G.GetItemLinkAttuneProgress and GetItemLinkAttuneProgress(itemLink1) or 0
-    local progress2 = _G.GetItemLinkAttuneProgress and GetItemLinkAttuneProgress(itemLink2) or 0
+    local progress1 = CustomAPI.GetItemLinkAttuneProgress(itemLink1) or 0
+    local progress2 = CustomAPI.GetItemLinkAttuneProgress(itemLink2) or 0
     
     if progress1 ~= progress2 then
         return progress1 < progress2 -- Lower progress wins
@@ -366,7 +454,7 @@ function AH.IsItemAttunable(itemLink)
     local itemId = AH.GetItemIDFromLink(itemLink)
     if not itemId then return false end
     
-    return _G.CanAttuneItemHelper and CanAttuneItemHelper(itemId) == 1
+    return CustomAPI.CanAttuneItem(itemId) == 1
 end
 
 ------------------------------------------------------------------------
@@ -995,19 +1083,11 @@ function AH.GetItemLinkFromNativeBagSlot(nativeBag, nativeSlot)
     if link and link ~= "" then
         return link
     end
-    local cg = _G.Custom_GetItemLinkBySlot
-    if type(cg) ~= "function" then
-        return nil
-    end
     local serverBag, serverSlot = AH.NativeToServerBagSlot(nativeBag, nativeSlot)
     if not serverBag then
         return nil
     end
-    local ok, result = pcall(cg, serverBag, serverSlot)
-    if ok and result and result ~= "" then
-        return result
-    end
-    return nil
+    return CustomAPI.GetItemLinkBySlot(serverBag, serverSlot)
 end
 _G.GetItemLinkFromNativeBagSlot = AH.GetItemLinkFromNativeBagSlot
 
@@ -1043,26 +1123,18 @@ end
 _G.GetBagRecName = AH.GetBagRecName
 
 function AH.IsSoulboundFromNativeBagSlot(nativeBag, nativeSlot)
-    if not _G.Custom_IsItemSoulbound then return false end
-
     local serverBag, serverSlot = AH.NativeToServerBagSlot(nativeBag, nativeSlot)
     if not serverBag then return false end
 
-    local ok, result = pcall(_G.Custom_IsItemSoulbound, serverBag, serverSlot)
-    if not ok then return false end
-    return result == true or result == 1
+    return CustomAPI.IsItemSoulbound(serverBag, serverSlot)
 end
 _G.IsSoulboundFromNativeBagSlot = AH.IsSoulboundFromNativeBagSlot
 
 function AH.IsItemInEquipMgrFromNativeBagSlot(nativeBag, nativeSlot)
-    if not _G.Custom_IsItemEquipMgr then return false end
-
     local serverBag, serverSlot = AH.NativeToServerBagSlot(nativeBag, nativeSlot)
     if not serverBag then return false end
 
-    local ok, result = pcall(_G.Custom_IsItemEquipMgr, serverBag, serverSlot)
-    if not ok then return false end
-    return result == 1
+    return CustomAPI.IsItemEquipMgr(serverBag, serverSlot)
 end
 _G.IsItemInEquipMgrFromNativeBagSlot = AH.IsItemInEquipMgrFromNativeBagSlot
 
@@ -1232,7 +1304,6 @@ local function WaitFrameOnUpdate(_, elapsed)
         end
         local newCount = #waitTable
         if oldCount ~= newCount then
-            --AH.print_debug_general(string.format("Wait table cleaned: %d -> %d entries", oldCount, newCount))
         end
         lastWaitCleanup = currentTime
     end
@@ -1249,7 +1320,6 @@ local function WaitFrameOnUpdate(_, elapsed)
                 table.remove(waitTable, i)
                 local success, err = pcall(f, unpack(params or {}))
                 if not success then
-                    --AH.print_debug_general("Wait function error: " .. tostring(err))
                 end
             end
         else
@@ -1313,7 +1383,6 @@ function AH.InitializeDefaultSettings()
     -- Handle legacy setting migration
     if AttuneHelperDB["EquipUntouchedVariants"] ~= nil and AttuneHelperDB["EquipNewAffixesOnly"] == nil then
         AttuneHelperDB["EquipNewAffixesOnly"] = AttuneHelperDB["EquipUntouchedVariants"]
-        --AH.print_debug_general("AttuneHelper: Migrated old setting 'EquipUntouchedVariants' to 'EquipNewAffixesOnly'.")
     end
     AttuneHelperDB["EquipUntouchedVariants"] = nil
 
@@ -1337,7 +1406,6 @@ function AH.InitializeDefaultSettings()
     -- Handle renaming of EnableVendorPreview to EnableVendorSellConfirmationDialog
     if AttuneHelperDB["EnableVendorPreview"] ~= nil and AttuneHelperDB["EnableVendorSellConfirmationDialog"] == nil then
         AttuneHelperDB["EnableVendorSellConfirmationDialog"] = AttuneHelperDB["EnableVendorPreview"]
-        --AH.print_debug_general("AttuneHelper: Migrated old setting 'EnableVendorPreview' to 'EnableVendorSellConfirmationDialog'.")
     end
     AttuneHelperDB["EnableVendorPreview"] = nil -- Remove old key
 
@@ -1395,7 +1463,7 @@ function AH.InitializeDefaultSettings()
     end
 
     
-	-- ʕ •ᴥ•ʔ✿ Default ignored items (only seeded once, never overwritten) ✿ ʕ •ᴥ•ʔ
+    -- ʕ •ᴥ•ʔ✿ Default ignored items (only seeded once, never overwritten) ✿ ʕ •ᴥ•ʔ
     -- AHIgnoreList is keyed by item name (string). A nil value means
     -- the user explicitly removed it; only seed if the key is absent.
     local defaultIgnoreItemIDs = {
@@ -1604,6 +1672,5 @@ function AH.UpdateDisenchantButtonVisibility()
         end
     end
     
-    --AH.print_debug_general(string.format("Disenchant buttons %s", shouldHide and "hidden" or "shown"))
 end
 _G.UpdateDisenchantButtonVisibility = AH.UpdateDisenchantButtonVisibility

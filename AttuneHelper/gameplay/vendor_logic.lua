@@ -1,5 +1,6 @@
 -- ʕ •ᴥ•ʔ✿ Gameplay · Vendor logic & selling ✿ ʕ •ᴥ•ʔ
 local AH = _G.AttuneHelper
+local CustomAPI = AH.CustomAPI or {}
 local AHVendorOverflowTooltip = CreateFrame("GameTooltip", "AHVendorOverflowTooltip", UIParent, "GameTooltipTemplate")
 AHVendorOverflowTooltip:SetFrameStrata("TOOLTIP")
 AHVendorOverflowTooltip:SetClampedToScreen(true)
@@ -215,7 +216,6 @@ function AH.GetQualifyingVendorItems()
 
     local itemsToVendor = {}
 
-    --AH.print_debug_vendor_preview("=== GetQualifyingVendorItems: Starting scan ===")
 
     local function IsPotentialBoEUnboundForVendorCheck(itemID, bag, slot_idx)
         if not itemID or not bag or not slot_idx then
@@ -230,19 +230,15 @@ function AH.GetQualifyingVendorItems()
         for bankBag = 5, 11 do
             table.insert(bagsToScan, bankBag)
         end
-        --AH.print_debug_vendor_preview("GetQualifying: Including bank bags in vendor scan.")
     end
 
-    --AH.print_debug_vendor_preview("GetQualifying: Scanning bags: " .. table.concat(bagsToScan, ", "))
 
     local totalItemsProcessed = 0
     local itemsSkippedCount = 0
 
     for bagIndex, b in ipairs(bagsToScan) do
-        --AH.print_debug_vendor_preview("GetQualifying: === Processing bag " .. b .. " ===")
         
         local bagSlots = GetContainerNumSlots(b)
-        --AH.print_debug_vendor_preview("GetQualifying: Bag " .. b .. " has " .. bagSlots .. " slots")
         
         for s = 1, bagSlots do
             totalItemsProcessed = totalItemsProcessed + 1
@@ -251,10 +247,9 @@ function AH.GetQualifyingVendorItems()
             local id = GetContainerItemID(b, s)
             
             if link and id then
-                local success, n, itemLinkFull, q, _, _, _, _, _, itemTexture, _, sellP = pcall(GetItemInfo, link)
-                
-                if success and n then
-                    --AH.print_debug_vendor_preview("GetQualifying: Processing item: " .. n .. " (ID: " .. id .. ")")
+                local n, itemLinkFull, q, _, _, _, _, _, _, itemTexture, sellP = GetItemInfo(link)
+
+                if n then
                     
                     local skip = false
                     local skipReason = ""
@@ -274,10 +269,10 @@ function AH.GetQualifyingVendorItems()
 
                     -- Double-check with container item info
                     if not skip and not deleteInstead then
-                        local containerSuccess, _, itemCount, _, _, _, _, cLink = pcall(GetContainerItemInfo, b, s)
-                        if containerSuccess and cLink then
-                            local linkSuccess, _, _, _, _, _, _, _, _, _, cSellPrice = pcall(GetItemInfo, cLink)
-                            if linkSuccess and (not cSellPrice or cSellPrice == 0) then
+                        local _, itemCount, _, _, _, _, cLink = GetContainerItemInfo(b, s)
+                        if cLink then
+                            local _, _, _, _, _, _, _, _, _, _, cSellPrice = GetItemInfo(cLink)
+                            if not cSellPrice or cSellPrice == 0 then
                                 if effectiveAlwaysVendored then
                                     deleteInstead = true
                                 else
@@ -308,11 +303,9 @@ function AH.GetQualifyingVendorItems()
                     -- Check attunement progress unless grey/white special rules are enabled
                     if not skip and (not effectiveAlwaysVendored) and ((q and q > 1) or (not useGreyWhiteVendorRules)) then
                         local thisVariantProgress = 0
-                        if _G.GetItemLinkAttuneProgress then
-                            local progressSuccess, progress = pcall(GetItemLinkAttuneProgress, link)
-                            if progressSuccess and type(progress) == "number" then
-                                thisVariantProgress = progress
-                            end
+                        local progress = CustomAPI.GetItemLinkAttuneProgress(link)
+                        if type(progress) == "number" then
+                            thisVariantProgress = progress
                         end
 
                         local isThisVariantFullyAttuned = (thisVariantProgress >= 100)
@@ -369,23 +362,13 @@ function AH.GetQualifyingVendorItems()
                                     slot = s,
                                     alwaysVendored = false
                                 })
-                                --AH.print_debug_vendor_preview("GetQualifying: ✓ ADDING to vendor list: " .. n .. " (" .. qualityReason .. ")")
                             else
                                 skip = true
                                 skipReason = qualityReason
                             end
                         else
-                            local isBoEU, isMSuccess, isM = false, true, false
-
-                            local boeSuccess, boeResult = pcall(IsPotentialBoEUnboundForVendorCheck, id, b, s)
-                            if boeSuccess then
-                                isBoEU = boeResult
-                            end
-
-                            isMSuccess, isM = pcall(AH.IsMythic, id)
-                            if not isMSuccess then
-                                isM = false
-                            end
+                            local isBoEU = IsPotentialBoEUnboundForVendorCheck(id, b, s)
+                            local isM = AH.IsMythic(id) == true
 
                             local noSellBoE = (AttuneHelperDB["Do Not Sell BoE Items"] == 1 and isBoEU)
                             local sellM = (AttuneHelperDB["Sell Attuned Mythic Gear?"] == 1)
@@ -401,7 +384,6 @@ function AH.GetQualifyingVendorItems()
                                     slot = s,
                                     alwaysVendored = false
                                 })
-                                --AH.print_debug_vendor_preview("GetQualifying: ✓ ADDING to vendor list: " .. n)
                             else
                                 skip = true
                                 skipReason = "BoE/Mythic rules (doSell=" .. tostring(doSell) .. ", noSellBoE=" .. tostring(noSellBoE) .. ")"
@@ -411,14 +393,12 @@ function AH.GetQualifyingVendorItems()
 
                     if skip then
                         itemsSkippedCount = itemsSkippedCount + 1
-                        --AH.print_debug_vendor_preview("GetQualifying: Skipping " .. n .. " - " .. skipReason)
                     end
                 end
             end
         end
     end
     
-    --AH.print_debug_vendor_preview("GetQualifying: Scan complete. Found " .. #itemsToVendor .. " items for vendor.")
 
     vendorListCache.generation = generation
     vendorListCache.key = cacheKey
@@ -554,7 +534,6 @@ end
 ------------------------------------------------------------------------
 function AH.SellQualifiedItemsFromDialog(itemsToSellFromDialog)
     if not (AH.IsVendorWindowOpen and AH.IsVendorWindowOpen()) then
-        --AH.print_debug_vendor_preview("SellQualifiedItemsFromDialog: Merchant frame not shown.")
         return
     end
     if AH.vendorSellInProgress then
@@ -562,7 +541,6 @@ function AH.SellQualifiedItemsFromDialog(itemsToSellFromDialog)
         return
     end
     if #itemsToSellFromDialog == 0 then
-        --AH.print_debug_vendor_preview("SellQualifiedItemsFromDialog: No items to sell.")
         DEFAULT_CHAT_FRAME:AddMessage("|cffffd200[Attune Helper]|r No items to vendor based on current settings.")
         return
     end
@@ -576,7 +554,6 @@ function AH.SellQualifiedItemsFromDialog(itemsToSellFromDialog)
     local processedCount = 0
     local itemsInPass = math.min(#itemsToSellFromDialog, maxSellCount)
 
-    --AH.print_debug_vendor_preview("SellQualifiedItemsFromDialog: Attempting to sell up to " .. maxSellCount .. " items.")
 
     local function FinishVendorSell(stoppedEarly)
         AH.vendorSellInProgress = false
@@ -666,14 +643,12 @@ function AH.VendorAttunedItems(buttonSelf)
     -- This sends a server packet to deposit all trades goods into resource bank
     
     if not (AH.IsVendorWindowOpen and AH.IsVendorWindowOpen()) then
-        --AH.print_debug_vendor_preview("VendorAttunedItems: Merchant frame not shown.")
         DEFAULT_CHAT_FRAME:AddMessage("|cffff0000[Attune Helper]|r You must have a merchant window open to vendor items.")
         return
     end
 
     local itemsToSell = AH.GetQualifyingVendorItems()
     if #itemsToSell == 0 then
-        --AH.print_debug_vendor_preview("VendorAttunedItems: No items qualify for vendoring.")
         DEFAULT_CHAT_FRAME:AddMessage("|cffffd200[Attune Helper]|r No items to vendor based on current settings.")
         return
     end
@@ -721,10 +696,8 @@ function AH.VendorAttunedItems(buttonSelf)
             overflowItems = overflowItems,
             overflowCount = #overflowItems
         })
-        --AH.print_debug_vendor_preview("VendorAttunedItems: Showing confirmation dialog for " .. #itemsToSellThisPass .. " items.")
     else
         -- Sell directly without confirmation
-        --AH.print_debug_vendor_preview("VendorAttunedItems: Selling directly, confirmation dialog disabled.")
         AH.SellQualifiedItemsFromDialog(itemsToSellThisPass)
     end
 end
@@ -801,7 +774,6 @@ AH.SetupVendorDialog = function()
             end
         end,
         OnCancel = function()
-            --AH.print_debug_vendor_preview("Vendor confirmation cancelled.")
         end,
         OnHide = function(self)
             self.button1:SetScript("OnEnter", nil)

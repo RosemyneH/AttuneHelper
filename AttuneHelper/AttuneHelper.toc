@@ -1,13 +1,12 @@
 ## Interface: 30300
-## Title: Attune|cFFFFA500Helper|r - |cFFFFFF001.8.2|r
+## Title: Attune|cFFFFA500Helper|r - |cFFFFFF001.8.4|r
 ## Notes: Automatically Swaps Gear To Streamline Attunement
 ## Author: Multiple People
-## Version: 1.8.2
+## Version: 1.8.4
 ## SavedVariables: AttuneHelperDB, AHIgnoreList, AHVendorList
 
 init.lua
 core\locale.lua
-core\debug.lua
 core\constants.lua
 core\util.lua
 core\char_profile.lua

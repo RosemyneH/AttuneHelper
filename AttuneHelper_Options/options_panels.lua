@@ -746,7 +746,7 @@ AH.general_options_list_for_checkboxes = {
     {text = "Auto Equip Attunables Automaticly", dbKey = "Auto Equip Attunable After Combat"},
     {text = "Do Not Sell BoE Items", dbKey = "Do Not Sell BoE Items"},
     {text = "Ignore Always-Vendor for Warforged and Lightforged", dbKey = "Ignore Always-Vendor for Warforged and Lightforged"},
-	{text = "Do Not Sell Grey And White Items", dbKey = "Do Not Sell Grey And White Items"},
+    {text = "Do Not Sell Grey And White Items", dbKey = "Do Not Sell Grey And White Items"},
     {text = "Limit Selling to 12 Items?", dbKey = "Limit Selling to 12 Items?"},
     {text = "Disable Auto-Equip Mythic BoE", dbKey = "Disable Auto-Equip Mythic BoE"},
     {text = "Equip BoE Bountied Items", dbKey = "Equip BoE Bountied Items"},
@@ -790,7 +790,7 @@ _G.general_options_list_for_checkboxes = AH.general_options_list_for_checkboxes
 ------------------------------------------------------------------------
 function AH.CreateCheckbox(t, p, x, y, iG, dkO)
     local cN, idK = t, dkO or t
-    
+
     if not iG and not dkO then
         cN = "AttuneHelperBlacklist_" .. t .. "Checkbox"
     elseif dkO and iG then
@@ -1215,8 +1215,8 @@ function AH.CreateOptionPanels()
     description_ah:SetText("Main options for AttuneHelper.")
 
     -- General Options Panel
-	
-	local generalOptionsPanel = CreateFrame("Frame", "AttuneHelperGeneralOptionsPanel", mainPanel)
+
+    local generalOptionsPanel = CreateFrame("Frame", "AttuneHelperGeneralOptionsPanel", mainPanel)
     generalOptionsPanel.name = "General Logic - AttuneHelper"
     generalOptionsPanel.parent = mainPanel.name
     InterfaceOptions_AddCategory(generalOptionsPanel)
@@ -1389,7 +1389,6 @@ function AH.InitializeThemeOptions()
     local yOffset = -60
     local themePanel = AH.UI.panels.theme
     if not themePanel then
-        --AH.print_debug_general("Theme panel not found for init!")
         return
     end
 
@@ -1631,9 +1630,9 @@ function AH.InitializeThemeOptions()
                 UIDropDownMenu_SetText(langDDT, btn.text)
                 AH.SetLocale(btn.value)
                 AH.SaveAllSettings()
-				--Reloading some texts that are generally only loaded on startup
-				AH.ReCreateButtons()
-				AH.LoadPopUps()
+                --Reloading some texts that are generally only loaded on startup
+                AH.ReCreateButtons()
+                AH.LoadPopUps()
             end
             info.checked = (opt.code == (AttuneHelperDB["Language"] or "default"))
             UIDropDownMenu_AddButton(info)

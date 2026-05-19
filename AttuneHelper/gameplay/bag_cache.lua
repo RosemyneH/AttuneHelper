@@ -1,5 +1,6 @@
 -- ʕ •ᴥ•ʔ✿ Gameplay · Bag cache & item counts ✿ ʕ •ᴥ•ʔ
 local AH = _G.AttuneHelper
+local CustomAPI = AH.CustomAPI or {}
 
 AH.bagSlotCache   = AH.bagSlotCache   or {}
 AH.equipSlotCache = AH.equipSlotCache or {}
@@ -23,53 +24,54 @@ AH.cacheStats = AH.cacheStats or {
 
 local bagSlotCache   = AH.bagSlotCache
 local equipSlotCache = AH.equipSlotCache
+local itemTypeToUnifiedSlot = AH.itemTypeToUnifiedSlot
 
 AH.bagRecArena = AH.bagRecArena or {}
 
 local function createMemoryArena()
-	return {
-		rows = {},
-		used = 0,
-	}
+    return {
+        rows = {},
+        used = 0,
+    }
 end
 
 local function resetMemoryArena(arena)
-	if not arena then
-		return
-	end
-	for i = 1, arena.used do
-		local row = arena.rows[i]
-		if row then
-			wipe(row)
-		end
-	end
-	arena.used = 0
+    if not arena then
+        return
+    end
+    for i = 1, arena.used do
+        local row = arena.rows[i]
+        if row then
+            wipe(row)
+        end
+    end
+    arena.used = 0
 end
 
 local function allocArenaRow(arena)
-	arena.used = arena.used + 1
-	local row = arena.rows[arena.used]
-	if not row then
-		row = {}
-		arena.rows[arena.used] = row
-	end
-	return row
+    arena.used = arena.used + 1
+    local row = arena.rows[arena.used]
+    if not row then
+        row = {}
+        arena.rows[arena.used] = row
+    end
+    return row
 end
 
 local function getBagRecArena(bagID)
-	local a = AH.bagRecArena[bagID]
-	if not a then
-		a = createMemoryArena()
-		AH.bagRecArena[bagID] = a
-	end
-	return a
+    local a = AH.bagRecArena[bagID]
+    if not a then
+        a = createMemoryArena()
+        AH.bagRecArena[bagID] = a
+    end
+    return a
 end
 
 local function InsertRecordIntoEquipCache(rec)
     if not rec or not rec.equipSlot then
         return
     end
-    local unified = AH.itemTypeToUnifiedSlot[rec.equipSlot]
+    local unified = itemTypeToUnifiedSlot[rec.equipSlot]
     if not unified then
         return
     end
@@ -132,7 +134,6 @@ end
 function AH.UpdateBagCache(bagID)
     -- Skip bank bags (5-11 on WotLK)
     if bagID >= 5 then
-        --AH.print_debug_general("UpdateBagCache: Skipping bank bag " .. bagID)
         return
     end
 
@@ -152,12 +153,12 @@ function AH.UpdateBagCache(bagID)
             -- ʕ •ᴥ•ʔ✿ Use cached GetItemInfo to save memory and CPU ✿ ʕ •ᴥ•ʔ
             local name, equipLoc = GetCachedItemInfo(link)
             if name and equipLoc and equipLoc ~= "" then
-                local unified = AH.itemTypeToUnifiedSlot[equipLoc]
+                local unified = itemTypeToUnifiedSlot[equipLoc]
                 if unified then
                     local itemID = AH.GetItemIDFromLink(link)
                     local canPlayerAttune = false
-                    if itemID and _G.CanAttuneItemHelper then
-                        canPlayerAttune = (CanAttuneItemHelper(itemID) == 1)
+                    if itemID then
+                        canPlayerAttune = (CustomAPI.CanAttuneItem(itemID) == 1)
                     end
 
                     local idKey = itemID and AH.CreateItemIdentifier(link, name, bagID, slotID) or name
@@ -191,9 +192,9 @@ function AH.UpdateBagCache(bagID)
                             isMythic = AH.IsMythic(itemID) == true
                         end
                         local bountyValue = 0
-                        if itemID and _G.GetCustomGameData and AH.synastriaDataReady then
-                            local ok, v = pcall(GetCustomGameData, 31, itemID)
-                            if ok and type(v) == "number" then
+                        if itemID and AH.synastriaDataReady then
+                            local v = CustomAPI.GetGameData(31, itemID)
+                            if type(v) == "number" then
                                 bountyValue = v
                             end
                         end
@@ -243,7 +244,6 @@ function AH.RefreshBagCacheForCombat()
         return false
     end
 
-    --AH.print_debug_general("RefreshBagCacheForCombat: refreshing regular bags")
     for bagId = 0, 4 do
         AH.UpdateBagCache(bagId)
     end
@@ -305,7 +305,7 @@ local function BuildInventoryCountText(mainCount, accountCount, isPrestiged)
 end
 
 local function GetAccountOnlyAttunableCount()
-    if not ItemLocIsLoaded() or not _G.CanAttuneItemHelper then
+    if not ItemLocIsLoaded() then
         return 0
     end
 
@@ -316,9 +316,9 @@ local function GetAccountOnlyAttunableCount()
             local itemId = GetContainerItemID(bagId, slotId)
             local link = GetContainerItemLink(bagId, slotId)
             if itemId and link then
-                local isAccountOnlyAttunable = CanAttuneItemHelper(itemId) == -2 and IsAttunableBySomeone(itemId)
+                local isAccountOnlyAttunable = CustomAPI.CanAttuneItem(itemId) == -2 and IsAttunableBySomeone(itemId)
                 if isAccountOnlyAttunable then
-                    local progress = _G.GetItemLinkAttuneProgress and GetItemLinkAttuneProgress(link) or 100
+                    local progress = CustomAPI.GetItemLinkAttuneProgress(link) or 100
                     if progress < 100 then
                         local isSoulbound = AH.IsSoulboundFromNativeBagSlot and AH.IsSoulboundFromNativeBagSlot(bagId, slotId)
                         if not isSoulbound then

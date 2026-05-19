@@ -1459,7 +1459,6 @@ end
 ------------------------------------------------------------------------
 function AH.SetupMainButtonHandlers()
     if not AH.UI.buttons.equipAll then
-        --AH.print_debug_general("SetupMainButtonHandlers: equipAll button not found")
         return
     end
 
@@ -1677,7 +1676,6 @@ function AH.SetupMainButtonHandlers()
         GameTooltip:Hide()
     end)
 
-    --AH.print_debug_general("Main button handlers set up successfully")
 end
 
 ------------------------------------------------------------------------
@@ -1962,7 +1960,7 @@ function AH.DeleteButtons()
     local buttons = AH.UI.buttons
     for _, key in ipairs(allButtons) do
         local btn = buttons[key]
-        if btn then btn:Hide() else AH.print_debug_general("button not found") end
+        if btn then btn:Hide() end
     end
     AH.UI.buttons = {}
 end

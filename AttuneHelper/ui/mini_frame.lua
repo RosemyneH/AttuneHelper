@@ -21,7 +21,6 @@ function AH.CreateMiniFrame()
                 frame:SetPoint(pos[1], UIParent, pos[3], pos[4], pos[5])
             end)
             if not success then
-                --AH.print_debug_general("Failed to restore mini frame position, using default: " .. tostring(err))
                 frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
                 AttuneHelperDB.MiniFramePosition = { "CENTER", UIParent, "CENTER", 0, 0 }
             end
