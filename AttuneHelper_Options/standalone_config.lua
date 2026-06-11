@@ -14,7 +14,7 @@ local PANEL_TABS = {
     { key = "theme", panelKey = "theme", label = "Theme" },
     { key = "listManagement", panelKey = "listManagement", label = "List Mgmt" },
     { key = "buttonLayout", panelKey = "buttonLayout", label = "Button Layout" },
-    { key = "blacklist", panelKey = "blacklist", label = "Blacklist" },
+    { key = "blacklist", panelKey = "blacklist", label = "Slots" },
     { key = "forge", panelKey = "forge", label = "Forge" },
     { key = "weapon", panelKey = "weapon", label = "Weapon" },
     { key = "history", panelKey = nil, label = "Attune History" },

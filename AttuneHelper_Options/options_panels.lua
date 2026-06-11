@@ -950,6 +950,15 @@ function AH.SaveAllSettings()
             AttuneHelperDB[cb:GetName():gsub("AttuneHelperBlacklist_", ""):gsub("Checkbox", "")] = cb:GetChecked() and 1 or 0
         end
     end
+
+    local delayedSlots = AH.EnsureDelayedSlotSwapSettings and AH.EnsureDelayedSlotSwapSettings() or nil
+    if delayedSlots then
+        for _, cb in ipairs(AH.delayed_slot_checkboxes or {}) do
+            if cb and cb:IsShown() and cb.slotName then
+                delayedSlots[cb.slotName] = cb:GetChecked() and true or nil
+            end
+        end
+    end
     
     -- Save general option checkboxes
     for _, cb in ipairs(AH.general_option_checkboxes) do
@@ -1091,6 +1100,11 @@ function AH.__loadAllSettingsFull()
         cb:SetChecked(AttuneHelperDB[cb:GetName():gsub("AttuneHelperBlacklist_", ""):gsub("Checkbox", "")] == 1)
     end
 
+    local delayedSlots = AH.EnsureDelayedSlotSwapSettings and AH.EnsureDelayedSlotSwapSettings() or nil
+    for _, cb in ipairs(AH.delayed_slot_checkboxes or {}) do
+        cb:SetChecked(type(delayedSlots) == "table" and delayedSlots[cb.slotName] == true)
+    end
+
     for _, cb in ipairs(AH.general_option_checkboxes) do
         cb:SetChecked(IsEnabledSettingValue(AttuneHelperDB[cb.dbKey or cb:GetName()]))
     end
@@ -1158,6 +1172,15 @@ function AH.SaveSettingsForced()
     for _, cb in ipairs(AH.blacklist_checkboxes) do
         if cb and cb:IsShown() then
             AttuneHelperDB[cb:GetName():gsub("AttuneHelperBlacklist_", ""):gsub("Checkbox", "")] = cb:GetChecked() and 1 or 0
+        end
+    end
+
+    local delayedSlots = AH.EnsureDelayedSlotSwapSettings and AH.EnsureDelayedSlotSwapSettings() or nil
+    if delayedSlots then
+        for _, cb in ipairs(AH.delayed_slot_checkboxes or {}) do
+            if cb and cb:IsShown() and cb.slotName then
+                delayedSlots[cb.slotName] = cb:GetChecked() and true or nil
+            end
         end
     end
     
@@ -1790,17 +1813,17 @@ end
 ------------------------------------------------------------------------
 function AH.CreateBlacklistOptionsPanel(mainPanel)
     local blacklistPanel = CreateFrame("Frame", "AttuneHelperBlacklistOptionsPanel", mainPanel)
-    blacklistPanel.name = "Blacklisting"
+    blacklistPanel.name = "Slot Settings"
     blacklistPanel.parent = mainPanel.name
     InterfaceOptions_AddCategory(blacklistPanel)
 
     local title = blacklistPanel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 16, -16)
-    title:SetText("Slot Blacklisting")
+    title:SetText("Slot Settings")
 
     local subtitle = blacklistPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
-    subtitle:SetText("Disable auto-equipping for specific equipment slots.")
+    subtitle:SetText("Disable or delay auto-equipping for specific equipment slots.")
 
     local yOffset = -60
     for i, slot in ipairs(AH.slots) do
@@ -1818,6 +1841,35 @@ function AH.CreateBlacklistOptionsPanel(mainPanel)
         elseif i > 9 then
             cb:SetPoint("TOPLEFT", blacklistPanel, "TOPLEFT", 250, yOffset)
         end
+    end
+
+    local delayTitle = blacklistPanel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    delayTitle:SetPoint("TOPLEFT", blacklistPanel, "TOPLEFT", 500, -16)
+    delayTitle:SetText("Delayed Slot Swaps")
+
+    local delaySubtitle = blacklistPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    delaySubtitle:SetPoint("TOPLEFT", delayTitle, "BOTTOMLEFT", 0, -8)
+    delaySubtitle:SetWidth(440)
+    delaySubtitle:SetJustifyH("LEFT")
+    delaySubtitle:SetText("Selected slots hold AHSet gear until every other equipped attunable is 100%.")
+
+    for i, slot in ipairs(AH.slots) do
+        local column = i > 9 and 1 or 0
+        local row = (i - 1) % 9
+        local cb = AH.CreateCheckbox(AHSET_SLOT_LABELS[slot] or slot, blacklistPanel, 500 + (column * 220), -60 - (row * 25), true, "DelaySwap_" .. slot)
+        cb.slotName = slot
+        table.insert(AH.delayed_slot_checkboxes, cb)
+        BindCheckboxToggle(cb, AH.SaveSettingsForced)
+        cb:SetScript("OnEnter", function(s)
+            GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+            GameTooltip:SetText(AH.t("Delayed Slot Swaps"))
+            GameTooltip:AddLine(
+                AH.t("Attunables wait in this slot until every other equipped attunable reaches 100%. AHSet items still equip here."),
+                1, 0.82, 0.2, true
+            )
+            GameTooltip:Show()
+        end)
+        cb:SetScript("OnLeave", GameTooltip_Hide)
     end
 
     return blacklistPanel
@@ -2662,6 +2714,7 @@ function AH.InitializeOptionControls()
     wipe(AH.general_option_checkboxes)
     wipe(AH.forge_type_checkboxes)
     wipe(AH.weapon_control_checkboxes)
+    wipe(AH.delayed_slot_checkboxes)
     AH.forge_option_controls = {}
     
     -- Initialize theme controls table

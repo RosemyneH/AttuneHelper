@@ -54,6 +54,8 @@ AH.AHSET_OH_TRIGGER_LOOSE = 2
 AH.AHSET_PREP_MAINHAND_SLOT = "PrepMainHandSlot"
 AH.AHSET_PREP_OFFHAND_SLOT = "PrepOffHandSlot"
 
+AH.DELAYED_SLOT_SWAP_DB_KEY = "Delay Slot Swap Until Others Complete"
+
 -- All inventory slots list
 AH.allInventorySlots = {
     "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot",

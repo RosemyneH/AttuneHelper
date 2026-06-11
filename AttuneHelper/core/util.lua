@@ -1462,6 +1462,10 @@ function AH.InitializeDefaultSettings()
         end
     end
 
+    if type(AttuneHelperDB[AH.DELAYED_SLOT_SWAP_DB_KEY]) ~= "table" then
+        AttuneHelperDB[AH.DELAYED_SLOT_SWAP_DB_KEY] = {}
+    end
+
     
     -- ʕ •ᴥ•ʔ✿ Default ignored items (only seeded once, never overwritten) ✿ ʕ •ᴥ•ʔ
     -- AHIgnoreList is keyed by item name (string). A nil value means
@@ -1629,6 +1633,27 @@ function AH.SetWeaponControlSetting(settingName, value)
     AHCharSettings[settingName] = normalizedValue
 end
 _G.SetWeaponControlSetting = AH.SetWeaponControlSetting
+
+function AH.EnsureDelayedSlotSwapSettings()
+    local dbKey = AH.DELAYED_SLOT_SWAP_DB_KEY
+    if type(AttuneHelperDB[dbKey]) ~= "table" then
+        AttuneHelperDB[dbKey] = {}
+    end
+    return AttuneHelperDB[dbKey]
+end
+
+function AH.IsDelayedSlotSwapSlot(slotName)
+    local settings = AttuneHelperDB and AttuneHelperDB[AH.DELAYED_SLOT_SWAP_DB_KEY]
+    return type(settings) == "table" and settings[slotName] == true
+end
+
+function AH.SetDelayedSlotSwapSlot(slotName, enabled)
+    if not slotName then
+        return
+    end
+    local settings = AH.EnsureDelayedSlotSwapSettings()
+    settings[slotName] = enabled and true or nil
+end
 
 ------------------------------------------------------------------------
 -- ʕ •ᴥ•ʔ✿ Blacklist management ✿ ʕ •ᴥ•ʔ
