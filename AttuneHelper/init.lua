@@ -28,6 +28,7 @@ AH.blacklist_checkboxes = {}
 AH.general_option_checkboxes = {}
 AH.theme_option_controls = {}
 AH.forge_type_checkboxes = {}
+AH.delayed_slot_checkboxes = {}
 
 -- Initialize session state
 AH.isSCKLoaded = false

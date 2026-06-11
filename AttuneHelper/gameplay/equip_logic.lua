@@ -350,6 +350,13 @@ function AH.performEquipAction(itemRecord, targetSlotID, currentSlotNameForActio
     local itemEquipLocToEquip = itemRecord.equipSlot
     local sckEventsTemporarilyUnregistered = false
 
+    local equippedSlotLink = targetSlotID and GetInventoryItemLink("player", targetSlotID) or nil
+    if AH.ShouldDelaySlotSwapUntilOtherSlotsComplete
+        and AH.ShouldDelaySlotSwapUntilOtherSlotsComplete(currentSlotNameForAction, equippedSlotLink)
+    then
+        return false
+    end
+
     if AH.isSCKLoaded and _G["SCK"] and _G["SCK"].frame then
         if _G["SCK"].confirmActive then _G["SCK"].confirmActive = false end
         _G["SCK"].frame:UnregisterEvent('EQUIP_BIND_CONFIRM')
@@ -822,6 +829,41 @@ local function IsAttunableFullyAttuned(itemLink)
     end
     local progress = GetAttuneProgressForLink(itemLink)
     return progress ~= nil and progress >= 100
+end
+
+local function EquippedSlotReadyForDelayedSwap(slotName)
+    local invSlotID = GetInventorySlotInfo(slotName)
+    local itemLink = invSlotID and GetInventoryItemLink("player", invSlotID) or nil
+    if not itemLink then
+        return true
+    end
+
+    local itemId = AH.GetItemIDFromLink(itemLink)
+    if not itemId or CustomAPI.CanAttuneItem(itemId) ~= 1 then
+        return true
+    end
+
+    local progress = GetAttuneProgressForLink(itemLink)
+    return progress ~= nil and progress >= 100
+end
+
+function AH.AllOtherSlotsCompleteForDelayedSwap(slotName)
+    for _, otherSlotName in ipairs(AH.allInventorySlots or {}) do
+        if otherSlotName ~= slotName and not EquippedSlotReadyForDelayedSwap(otherSlotName) then
+            return false
+        end
+    end
+    return true
+end
+
+function AH.ShouldDelaySlotSwapUntilOtherSlotsComplete(slotName, equippedItemLink)
+    if not slotName or not equippedItemLink then
+        return false
+    end
+    if not (AH.IsDelayedSlotSwapSlot and AH.IsDelayedSlotSwapSlot(slotName)) then
+        return false
+    end
+    return not AH.AllOtherSlotsCompleteForDelayedSwap(slotName)
 end
 
 -- ʕ •ᴥ•ʔ✿ When the off-hand slot is empty, equip the AHSet PrepOffHandSlot item.
