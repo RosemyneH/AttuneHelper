@@ -350,13 +350,6 @@ function AH.performEquipAction(itemRecord, targetSlotID, currentSlotNameForActio
     local itemEquipLocToEquip = itemRecord.equipSlot
     local sckEventsTemporarilyUnregistered = false
 
-    local equippedSlotLink = targetSlotID and GetInventoryItemLink("player", targetSlotID) or nil
-    if AH.ShouldDelaySlotSwapUntilOtherSlotsComplete
-        and AH.ShouldDelaySlotSwapUntilOtherSlotsComplete(currentSlotNameForAction, equippedSlotLink)
-    then
-        return false
-    end
-
     if AH.isSCKLoaded and _G["SCK"] and _G["SCK"].frame then
         if _G["SCK"].confirmActive then _G["SCK"].confirmActive = false end
         _G["SCK"].frame:UnregisterEvent('EQUIP_BIND_CONFIRM')
@@ -856,8 +849,8 @@ function AH.AllOtherSlotsCompleteForDelayedSwap(slotName)
     return true
 end
 
-function AH.ShouldDelaySlotSwapUntilOtherSlotsComplete(slotName, equippedItemLink)
-    if not slotName or not equippedItemLink then
+function AH.ShouldDelayAttunableEquipUntilOtherSlotsComplete(slotName)
+    if not slotName then
         return false
     end
     if not (AH.IsDelayedSlotSwapSlot and AH.IsDelayedSlotSwapSlot(slotName)) then
@@ -865,6 +858,8 @@ function AH.ShouldDelaySlotSwapUntilOtherSlotsComplete(slotName, equippedItemLin
     end
     return not AH.AllOtherSlotsCompleteForDelayedSwap(slotName)
 end
+
+AH.ShouldDelaySlotSwapUntilOtherSlotsComplete = AH.ShouldDelayAttunableEquipUntilOtherSlotsComplete
 
 -- ʕ •ᴥ•ʔ✿ When the off-hand slot is empty, equip the AHSet PrepOffHandSlot item.
 -- Called after a 2H -> 1H MH swap so the prep off-hand follows the main-hand change. ✿ ʕ •ᴥ•ʔ
@@ -1231,6 +1226,7 @@ function AH.EquipAllAttunables()
         local isEquipNewAffixesOnlyEnabled = (AttuneHelperDB["EquipNewAffixesOnly"] == 1)
 
         -- P2: Look for attunable items from bags, prioritized by forge level and progress
+        local delayAttunableEquip = AH.ShouldDelayAttunableEquipUntilOtherSlotsComplete(slotName)
         local attunableCandidates = {}
         for _, rec in ipairs(candidates) do
             if rec.isAttunable then
@@ -1252,10 +1248,10 @@ function AH.EquipAllAttunables()
 
         -- Try to equip the best candidate
         for _, rec in ipairs(attunableCandidates) do
-            local proceed = true
+            local proceed = not delayAttunableEquip
 
             -- ʕ •ᴥ•ʔ✿ Check weapon type restrictions ✿ ʕ •ᴥ•ʔ
-            if not AH.IsWeaponTypeAllowed(rec.equipSlot, slotName) then
+            if proceed and not AH.IsWeaponTypeAllowed(rec.equipSlot, slotName) then
                 proceed = false
                 local weaponTypeName = AH.GetWeaponTypeDisplayName(rec.equipSlot)
             end

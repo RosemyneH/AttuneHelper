@@ -1851,7 +1851,7 @@ function AH.CreateBlacklistOptionsPanel(mainPanel)
     delaySubtitle:SetPoint("TOPLEFT", delayTitle, "BOTTOMLEFT", 0, -8)
     delaySubtitle:SetWidth(440)
     delaySubtitle:SetJustifyH("LEFT")
-    delaySubtitle:SetText("Selected slots only swap after every other equipped attunable is 100%.")
+    delaySubtitle:SetText("Selected slots hold AHSet gear until every other equipped attunable is 100%.")
 
     for i, slot in ipairs(AH.slots) do
         local column = i > 9 and 1 or 0
@@ -1864,7 +1864,7 @@ function AH.CreateBlacklistOptionsPanel(mainPanel)
             GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
             GameTooltip:SetText(AH.t("Delayed Slot Swaps"))
             GameTooltip:AddLine(
-                AH.t("This slot will only replace its equipped item after every other equipped attunable item reaches 100%."),
+                AH.t("Attunables wait in this slot until every other equipped attunable reaches 100%. AHSet items still equip here."),
                 1, 0.82, 0.2, true
             )
             GameTooltip:Show()
